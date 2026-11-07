@@ -1,5 +1,3 @@
-import './globals.css';
-
 export const metadata = {
   title: 'Tryout TKA',
   description: 'Aplikasi Tryout TKA Online',
