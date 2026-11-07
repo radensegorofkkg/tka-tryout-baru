@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Helper fungsi agar inisialisasi aman saat proses Build di Vercel
+const getSupabase = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(supabaseUrl, supabaseKey);
+};
 
 export default function HalamanUjian() {
   const [soalList, setSoalList] = useState([]);
@@ -27,6 +30,7 @@ export default function HalamanUjian() {
     setNomorPeserta(nomor);
 
     async function ambilSoal() {
+      const supabase = getSupabase();
       const { data, error } = await supabase.from('soal').select('*');
       if (error) {
         console.error('Gagal mengambil soal:', error);
@@ -55,6 +59,7 @@ export default function HalamanUjian() {
   const handleSelesai = async () => {
     if (!confirm('Apakah Anda yakin ingin mengakhiri dan mengirimkan jawaban ujian?')) return;
     
+    const supabase = getSupabase();
     const { error } = await supabase.from('jawaban_peserta').insert([
       { nomor_ujian: nomorPeserta, nama: namaPeserta, detail_jawaban: jawaban }
     ]);
