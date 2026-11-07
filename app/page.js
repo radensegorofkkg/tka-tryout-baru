@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
-// Buat helper fungsi agar pembacaan Supabase client aman saat proses Build di Vercel
 const getSupabase = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -26,7 +25,6 @@ export default function LoginPage() {
     try {
       const supabase = getSupabase();
 
-      // Cek apakah data siswa ada di tabel students
       const { data: student, error } = await supabase
         .from('students')
         .select('*')
@@ -40,14 +38,12 @@ export default function LoginPage() {
         return;
       }
 
-      // Cek Pencegahan Login Ganda
       if (student.is_logged_in) {
         alert('Peringatan: Nomor ujian ini sedang aktif di perangkat lain! Harap hubungi pengawas.');
         setLoading(false);
         return;
       }
 
-      // Update status is_logged_in menjadi true
       const { error: updateError } = await supabase
         .from('students')
         .update({ is_logged_in: true })
@@ -59,7 +55,8 @@ export default function LoginPage() {
         return;
       }
 
-      localStorage.setItem('current_student', JSON.stringify(student));
+      localStorage.setItem('peserta_nama', student.nama_lengkap);
+      localStorage.setItem('peserta_nomor', student.nomor_ujian);
       router.push('/ujian');
 
     } catch (err) {
