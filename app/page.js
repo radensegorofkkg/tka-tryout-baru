@@ -3,65 +3,115 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Inisialisasi koneksi Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export default function LoginUjian() {
-  const [nomorPeserta, setNomorPeserta] = useState('');
-  const [nama, setNama] = useState('');
+export default function LoginPage() {
+  const [nomorUjian, setNomorUjian] = useState('');
+  const [namaLengkap, setNamaLengkap] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!nomorPeserta || !nama) {
-      alert('Mohon isi Nomor Ujian dan Nama Lengkap!');
-      return;
-    }
-
     setLoading(true);
-    // Simpan ke localStorage untuk dibawa ke halaman ujian
-    localStorage.setItem('peserta_nomor', nomorPeserta);
-    localStorage.setItem('peserta_nama', nama);
 
-    // Cek apakah peserta terdaftar di database (opsional, langsung masuk ke ujian)
-    setLoading(false);
-    router.push('/ujian');
+    // 1. Pembersihan input (Upper Case & Trim spasi)
+    const cleanNomorUjian = nomorUjian.trim().toUpperCase();
+    const cleanNama = namaLengkap.trim();
+
+    try {
+      // 2. Cek apakah peserta terdaftar di tabel students
+      const { data: student, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('nomor_ujian', cleanNomorUjian)
+        .ilike('nama_lengkap', cleanNama)
+        .single();
+
+      if (error || !student) {
+        alert('Gagal Login: Nomor Ujian atau Nama Lengkap tidak terdaftar / salah ketik!');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Pencegahan Login Ganda
+      if (student.is_logged_in) {
+        alert('Peringatan: Nomor ujian ini sedang aktif di perangkat lain! Harap hubungi pengawas.');
+        setLoading(false);
+        return;
+      }
+
+      // 4. Update status is_logged_in menjadi true
+      const { error: updateError } = await supabase
+        .from('students')
+        .update({ is_logged_in: true })
+        .eq('nomor_ujian', cleanNomorUjian);
+
+      if (updateError) {
+        alert('Terjadi kesalahan saat memproses login.');
+        setLoading(false);
+        return;
+      }
+
+      // 5. Simpan data siswa sementara di browser
+      localStorage.setItem('current_student', JSON.stringify(student));
+
+      // Masuk ke halaman ujian
+      router.push('/ujian');
+
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan koneksi.');
+      setLoading(false);
+    }
   };
 
   return (
-    <main style={{ maxWidth: '400px', margin: '80px auto', padding: '30px', border: '1px solid #ddd', borderRadius: '8px', fontFamily: 'sans-serif', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-      <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#333' }}>Login Tryout TKA</h2>
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>Nomor Ujian:</label>
-          <input 
-            type="text" 
-            value={nomorPeserta} 
-            onChange={(e) => setNomorPeserta(e.target.value)} 
-            placeholder="Contoh: TKA-001"
-            style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-          />
-        </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>Nama Lengkap:</label>
-          <input 
-            type="text" 
-            value={nama} 
-            onChange={(e) => setNama(e.target.value)} 
-            placeholder="Masukkan nama kamu"
-            style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-          />
-        </div>
-        <button 
-          type="submit" 
-          disabled={loading}
-          style={{ padding: '12px', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}
-        >
-          {loading ? 'Memproses...' : 'Mulai Ujian'}
-        </button>
-      </form>
-    </main>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md p-8 bg-white rounded-xl shadow-md border border-gray-100">
+        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Login Tryout TKA</h1>
+        
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Nomor Ujian:
+            </label>
+            <input
+              type="text"
+              value={nomorUjian}
+              onChange={(e) => setNomorUjian(e.target.value)}
+              placeholder="Contoh: 20528639-001"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Nama Lengkap:
+            </label>
+            <input
+              type="text"
+              value={namaLengkap}
+              onChange={(e) => setNamaLengkap(e.target.value)}
+              placeholder="Masukkan nama kamu"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+          >
+            {loading ? 'Memeriksa...' : 'Mulai Ujian'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
