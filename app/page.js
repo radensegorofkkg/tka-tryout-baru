@@ -67,13 +67,37 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md p-8 bg-white rounded-xl shadow-md border border-gray-100">
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Login Tryout TKA</h1>
+    <div style={{
+      display: 'flex',
+      minHeight: '100vh',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f9fafb',
+      fontFamily: 'sans-serif',
+      padding: '16px'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+        padding: '32px',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        border: '1px solid #f3f4f6'
+      }}>
+        <h1 style={{
+          fontSize: '24px',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          color: '#1f2937',
+          marginBottom: '24px'
+        }}>
+          Login Tryout TKA
+        </h1>
         
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
               Nomor Ujian:
             </label>
             <input
@@ -81,13 +105,21 @@ export default function LoginPage() {
               value={nomorUjian}
               onChange={(e) => setNomorUjian(e.target.value)}
               placeholder="Contoh: 20528639-001"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontSize: '14px'
+              }}
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
               Nama Lengkap:
             </label>
             <input
@@ -95,7 +127,15 @@ export default function LoginPage() {
               value={namaLengkap}
               onChange={(e) => setNamaLengkap(e.target.value)}
               placeholder="Masukkan nama kamu"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontSize: '14px'
+              }}
               required
             />
           </div>
@@ -103,7 +143,18 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+            style={{
+              width: '100%',
+              backgroundColor: '#0070f3',
+              color: 'white',
+              fontWeight: '500',
+              padding: '10px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '16px',
+              marginTop: '8px'
+            }}
           >
             {loading ? 'Memeriksa...' : 'Mulai Ujian'}
           </button>
