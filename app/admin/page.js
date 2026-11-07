@@ -339,4 +339,80 @@ export default function AdminDashboard() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', backgroundColor: '#ebf8ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bee3f8' }}>
               <div style={{ fontSize: '14px', color: '#2b6cb0' }}>
-                <strong>Ingin Import Soal dari Excel/CSV?</strong> Unduh format
+                <strong>Ingin Import Soal dari Excel/CSV?</strong> Unduh format templatnya terlebih dahulu.
+              </div>
+              <button onClick={handleDownloadTemplateSoal} style={{ backgroundColor: '#3182ce', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
+                📥 Unduh Template CSV Soal
+              </button>
+            </div>
+
+            {/* Form Upload File Soal */}
+            <div style={{ backgroundColor: '#f7fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+              <h3 style={{ marginTop: 0, fontSize: '16px' }}>Import Soal via File CSV</h3>
+              <input type="file" accept=".csv" onChange={handleFileUploadSoal} style={{ fontSize: '14px' }} />
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#718096' }}>*Pilih file CSV yang sudah diisi sesuai struktur template.</p>
+            </div>
+
+            {/* Form Tambah Soal Manual */}
+            <div style={{ backgroundColor: '#f7fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+              <h3 style={{ marginTop: 0 }}>Tambah Soal Manual</h3>
+              <form onSubmit={handleAddSoal} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Pertanyaan / Soal:</label>
+                  <textarea rows="3" value={pertanyaan} onChange={(e) => setPertanyaan(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box' }} required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <input type="text" placeholder="Pilihan A" value={opsiA} onChange={(e) => setOpsiA(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
+                  <input type="text" placeholder="Pilihan B" value={opsiB} onChange={(e) => setOpsiB(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
+                  <input type="text" placeholder="Pilihan C" value={opsiC} onChange={(e) => setOpsiC(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
+                  <input type="text" placeholder="Pilihan D" value={opsiD} onChange={(e) => setOpsiD(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
+                </div>
+                <div>
+                  <label style={{ fontWeight: 'bold', marginRight: '8px' }}>Kunci Jawaban Benar:</label>
+                  <select value={kunci} onChange={(e) => setKunci(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e0', fontWeight: 'bold' }}>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                  </select>
+                </div>
+                <button type="submit" disabled={loading} style={{ backgroundColor: '#38a169', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '8px' }}>Simpan Soal ke Database</button>
+              </form>
+            </div>
+
+            <h3>Daftar Soal Tersimpan ({soalList.length})</h3>
+            {soalList.map((item, idx) => (
+              <div key={item.id} style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                  <span>Soal #{idx + 1}</span>
+                  <button onClick={() => handleDeleteSoal(item.id)} style={{ backgroundColor: '#e53e3e', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Hapus Soal</button>
+                </div>
+                <p style={{ margin: '8px 0', fontSize: '15px' }}>{item.pertanyaan}</p>
+                <div style={{ fontSize: '14px', color: '#4a5568', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                  <div>A. {item.opsi_a}</div>
+                  <div>B. {item.opsi_b}</div>
+                  <div>C. {item.opsi_c}</div>
+                  <div>D. {item.opsi_d}</div>
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>Kunci Jawaban: {item.kunci_jawaban}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* TAB 3: PENGATURAN */}
+        {activeTab === 'pengaturan' && (
+          <div style={{ backgroundColor: '#f7fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginTop: 0 }}>Pengaturan Pelaksanaan Tryout</h3>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Durasi Ujian (Menit):</label>
+              <input type="number" value={durasi} onChange={(e) => setDurasi(e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '150px' }} />
+            </div>
+            <button onClick={() => alert('Pengaturan durasi disimpan!')} style={{ backgroundColor: '#3182ce', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Simpan Pengaturan</button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
