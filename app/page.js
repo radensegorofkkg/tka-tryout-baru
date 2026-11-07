@@ -3,10 +3,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
-// Inisialisasi koneksi Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Buat helper fungsi agar pembacaan Supabase client aman saat proses Build di Vercel
+const getSupabase = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
 
 export default function LoginPage() {
   const [nomorUjian, setNomorUjian] = useState('');
@@ -18,12 +20,13 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Pembersihan input (Upper Case & Trim spasi)
     const cleanNomorUjian = nomorUjian.trim().toUpperCase();
     const cleanNama = namaLengkap.trim();
 
     try {
-      // 2. Cek apakah peserta terdaftar di tabel students
+      const supabase = getSupabase();
+
+      // Cek apakah data siswa ada di tabel students
       const { data: student, error } = await supabase
         .from('students')
         .select('*')
@@ -37,14 +40,14 @@ export default function LoginPage() {
         return;
       }
 
-      // 3. Pencegahan Login Ganda
+      // Cek Pencegahan Login Ganda
       if (student.is_logged_in) {
         alert('Peringatan: Nomor ujian ini sedang aktif di perangkat lain! Harap hubungi pengawas.');
         setLoading(false);
         return;
       }
 
-      // 4. Update status is_logged_in menjadi true
+      // Update status is_logged_in menjadi true
       const { error: updateError } = await supabase
         .from('students')
         .update({ is_logged_in: true })
@@ -56,10 +59,7 @@ export default function LoginPage() {
         return;
       }
 
-      // 5. Simpan data siswa sementara di browser
       localStorage.setItem('current_student', JSON.stringify(student));
-
-      // Masuk ke halaman ujian
       router.push('/ujian');
 
     } catch (err) {
