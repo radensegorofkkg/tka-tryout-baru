@@ -75,6 +75,22 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
     }
   };
 
+  const tutupSisa = async () => {
+    if (!confirm('Tutup dan nilai semua siswa yang belum mengumpulkan? Jawaban yang sudah terkirim akan dihitung.')) return;
+    setInfo(''); setGalat(''); setSibuk(true);
+    try {
+      const { res, json, keluar } = await panggil('POST', '/api/admin/ujian', { aksi: 'tutup_sesi', id: ujianId });
+      if (keluar) return;
+      if (!res.ok) { setGalat(json.pesan || 'Terjadi kesalahan.'); return; }
+      setInfo(`${json.berhasil} sesi ditutup dan dinilai.` + (json.gagal ? ` ${json.gagal} gagal, silakan coba lagi.` : ''));
+      await muat();
+    } catch {
+      setGalat('Tidak bisa menghubungi server. Silakan coba lagi.');
+    } finally {
+      setSibuk(false);
+    }
+  };
+
   const resetLogin = (s) => {
     if (!confirm(`Reset login untuk ${s.nama_lengkap} (${s.nomor_ujian})? Siswa ini bisa login lagi.`)) return;
     kirim({ aksi: 'reset_login', nomor_ujian: s.nomor_ujian }, `Login ${s.nama_lengkap} sudah direset.`);
@@ -135,6 +151,13 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
         {chip('Waktu habis', r.waktu_habis, 'waktu_habis')}
         {chip('Selesai', r.selesai, 'selesai')}
       </div>
+
+      {data.ujian.status === 'selesai' && r.mengerjakan + r.waktu_habis > 0 && (
+        <div style={{ backgroundColor: '#fffaf0', border: '1px solid #fbd38d', color: '#c05621', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span>Ujian sudah ditutup, tetapi {r.mengerjakan + r.waktu_habis} siswa belum dinilai.</span>
+          <button onClick={tutupSisa} disabled={sibuk} style={mini('#dd6b20', sibuk)}>Tutup &amp; Nilai Sekarang</button>
+        </div>
+      )}
 
       {galat && (
         <div style={{ backgroundColor: '#fff5f5', border: '1px solid #feb2b2', color: '#c53030', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px', fontSize: '13px' }}>{galat}</div>
