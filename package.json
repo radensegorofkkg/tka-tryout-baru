@@ -1,123 +1,24 @@
-09:02:40.367 Running build in Washington, D.C., USA (East) – iad1
-09:02:40.367 Build machine configuration: 2 cores, 8 GB
-09:02:40.492 Cloning github.com/radensegorofkkg/tka-tryout-baru (Branch: main, Commit: 45f29ed)
-09:02:40.796 Cloning completed: 302.000ms
-09:02:41.085 Restored build cache from previous deployment (J5p3JWDaptv9RG7v6q8hzsR7R9Fo)
-09:02:41.536 Running "vercel build"
-09:02:41.548 Vercel CLI 65.11.0
-09:02:41.786 Installing dependencies...
-09:02:42.349 npm warn Unknown env config "cache-dir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
-09:02:44.220 
-09:02:44.220 up to date in 2s
-09:02:44.220 
-09:02:44.220 83 packages are looking for funding
-09:02:44.220   run `npm fund` for details
-09:02:44.258 Detected Next.js version: 14.1.0
-09:02:44.263 Running "npm run build"
-09:02:44.394 npm warn Unknown env config "cache-dir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
-09:02:44.418 
-09:02:44.418 > tka-tryout-baru@0.1.0 build
-09:02:44.418 > next build
-09:02:44.418 
-09:02:45.227    ▲ Next.js 14.1.0
-09:02:45.227 
-09:02:45.247    Creating an optimized production build ...
-09:02:52.033 Failed to compile.
-09:02:52.034 
-09:02:52.036 ./node_modules/katex/dist/katex.min.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[3]!./node_modules/katex/dist/katex.min.css
-09:02:52.036 Error: Cannot find module 'tailwindcss'
-09:02:52.036 Require stack:
-09:02:52.036 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js
-09:02:52.036 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js
-09:02:52.036 - /vercel/path0/node_modules/next/dist/build/webpack/config/index.js
-09:02:52.036 - /vercel/path0/node_modules/next/dist/build/webpack-config.js
-09:02:52.037 - /vercel/path0/node_modules/next/dist/build/webpack-build/impl.js
-09:02:52.037 - /vercel/path0/node_modules/next/dist/compiled/jest-worker/processChild.js
-09:02:52.037     at Module.<anonymous> (node:internal/modules/cjs/loader:1603:15)
-09:02:52.037     at /vercel/path0/node_modules/next/dist/server/require-hook.js:55:36
-09:02:52.037     at wrapResolveFilename (node:internal/modules/cjs/loader:1145:27)
-09:02:52.037     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1196:12)
-09:02:52.037     at require.resolve (node:internal/modules/helpers:336:31)
-09:02:52.037     at loadPlugin (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:49:32)
-09:02:52.037     at /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:56
-09:02:52.040     at Array.map (<anonymous>)
-09:02:52.040     at getPostCssPlugins (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:47)
-09:02:52.040     at async /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js:124:36
-09:02:52.040 
-09:02:52.040 Import trace for requested module:
-09:02:52.040 ./node_modules/katex/dist/katex.min.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[3]!./node_modules/katex/dist/katex.min.css
-09:02:52.040 ./node_modules/katex/dist/katex.min.css
-09:02:52.040 ./app/admin/Teks.js
-09:02:52.040 ./app/admin/ImporSoal.js
-09:02:52.040 ./app/admin/page.js
-09:02:52.040 
-09:02:52.040 ./node_modules/katex/dist/katex.min.css
-09:02:52.040 Error: Cannot find module 'tailwindcss'
-09:02:52.040 Require stack:
-09:02:52.040 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js
-09:02:52.040 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack/config/index.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack-config.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack-build/impl.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/compiled/jest-worker/processChild.js
-09:02:52.041     at Module.<anonymous> (node:internal/modules/cjs/loader:1603:15)
-09:02:52.041     at /vercel/path0/node_modules/next/dist/server/require-hook.js:55:36
-09:02:52.041     at wrapResolveFilename (node:internal/modules/cjs/loader:1145:27)
-09:02:52.041     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1196:12)
-09:02:52.041     at require.resolve (node:internal/modules/helpers:336:31)
-09:02:52.041     at loadPlugin (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:49:32)
-09:02:52.041     at /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:56
-09:02:52.041     at Array.map (<anonymous>)
-09:02:52.041     at getPostCssPlugins (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:47)
-09:02:52.041     at async /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js:124:36
-09:02:52.041     at tryRunOrWebpackError (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:311563)
-09:02:52.041     at __webpack_require_module__ (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:131195)
-09:02:52.041     at __nested_webpack_require_153754__ (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:130634)
-09:02:52.041     at /vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:131487
-09:02:52.041     at symbolIterator (/vercel/path0/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
-09:02:52.041     at done (/vercel/path0/node_modules/next/dist/compiled/neo-async/async.js:1:14824)
-09:02:52.041     at Hook.eval [as callAsync] (eval at create (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:13:28867), <anonymous>:15:1)
-09:02:52.041     at Hook.CALL_ASYNC_DELEGATE [as _callAsync] (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:13:26021)
-09:02:52.041     at /vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:130354
-09:02:52.041     at symbolIterator (/vercel/path0/node_modules/next/dist/compiled/neo-async/async.js:1:14402)
-09:02:52.041 -- inner error --
-09:02:52.041 Error: Cannot find module 'tailwindcss'
-09:02:52.041 Require stack:
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack/config/index.js
-09:02:52.041 - /vercel/path0/node_modules/next/dist/build/webpack-config.js
-09:02:52.042 - /vercel/path0/node_modules/next/dist/build/webpack-build/impl.js
-09:02:52.042 - /vercel/path0/node_modules/next/dist/compiled/jest-worker/processChild.js
-09:02:52.042     at Module.<anonymous> (node:internal/modules/cjs/loader:1603:15)
-09:02:52.042     at /vercel/path0/node_modules/next/dist/server/require-hook.js:55:36
-09:02:52.042     at wrapResolveFilename (node:internal/modules/cjs/loader:1145:27)
-09:02:52.042     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1196:12)
-09:02:52.042     at require.resolve (node:internal/modules/helpers:336:31)
-09:02:52.042     at loadPlugin (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:49:32)
-09:02:52.042     at /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:56
-09:02:52.042     at Array.map (<anonymous>)
-09:02:52.042     at getPostCssPlugins (/vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:157:47)
-09:02:52.042     at async /vercel/path0/node_modules/next/dist/build/webpack/config/blocks/css/index.js:124:36
-09:02:52.042     at Object.<anonymous> (/vercel/path0/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[2]!/vercel/path0/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[3]!/vercel/path0/node_modules/katex/dist/katex.min.css:1:7)
-09:02:52.042     at /vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:915116
-09:02:52.042     at Hook.eval [as call] (eval at create (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:13:28645), <anonymous>:7:1)
-09:02:52.042     at Hook.CALL_DELEGATE [as _call] (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:13:25915)
-09:02:52.042     at /vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:131228
-09:02:52.042     at tryRunOrWebpackError (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:311517)
-09:02:52.042     at __webpack_require_module__ (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:131195)
-09:02:52.042     at __nested_webpack_require_153754__ (/vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:130634)
-09:02:52.042     at /vercel/path0/node_modules/next/dist/compiled/webpack/bundle5.js:28:131487
-09:02:52.042     at symbolIterator (/vercel/path0/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
-09:02:52.042 
-09:02:52.042 Generated code for /vercel/path0/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[2]!/vercel/path0/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[11].oneOf[12].use[3]!/vercel/path0/node_modules/katex/dist/katex.min.css
-09:02:52.042 
-09:02:52.042 Import trace for requested module:
-09:02:52.042 ./node_modules/katex/dist/katex.min.css
-09:02:52.042 ./app/admin/Teks.js
-09:02:52.042 ./app/admin/ImporSoal.js
-09:02:52.043 ./app/admin/page.js
-09:02:52.043 
-09:02:52.049 
-09:02:52.050 > Build failed because of webpack errors
-09:02:52.091 Error: [BUILD_UTILS_SPAWN_1] Command "npm run build" exited with 1
+{
+  "name": "tka-tryout-baru",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "exceljs": "^4.4.0",
+    "katex": "^0.16.9",
+    "next": "14.1.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1"
+  }
+}
