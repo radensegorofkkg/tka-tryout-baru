@@ -1,13 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-
-const getSupabase = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  return createClient(supabaseUrl, supabaseAnonKey);
-};
 
 export default function LoginPage() {
   const [nomorUjian, setNomorUjian] = useState('');
@@ -19,44 +12,24 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const cleanNomorUjian = nomorUjian.trim().toUpperCase();
-    const cleanNama = namaLengkap.trim();
-
     try {
-      const supabase = getSupabase();
+      const res = await fetch('/api/siswa/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nomor_ujian: nomorUjian, nama_lengkap: namaLengkap }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch { /* respons bukan JSON */ }
 
-      const { data: student, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('nomor_ujian', cleanNomorUjian)
-        .ilike('nama_lengkap', cleanNama)
-        .single();
-
-      if (error || !student) {
-        alert('Gagal Login: Nomor Ujian atau Nama Lengkap tidak terdaftar / salah ketik!');
+      if (!res.ok) {
+        alert(data.pesan || 'Terjadi kesalahan saat memproses login.');
         setLoading(false);
         return;
       }
 
-      if (student.is_logged_in) {
-        alert('Peringatan: Nomor ujian ini sedang aktif di perangkat lain! Harap hubungi pengawas.');
-        setLoading(false);
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from('students')
-        .update({ is_logged_in: true })
-        .eq('nomor_ujian', cleanNomorUjian);
-
-      if (updateError) {
-        alert('Terjadi kesalahan saat memproses login.');
-        setLoading(false);
-        return;
-      }
-
-      localStorage.setItem('peserta_nama', student.nama_lengkap);
-      localStorage.setItem('peserta_nomor', student.nomor_ujian);
+      localStorage.setItem('peserta_nama', data.nama_lengkap);
+      localStorage.setItem('peserta_nomor', data.nomor_ujian);
+      localStorage.setItem('peserta_token', data.token);
       router.push('/ujian');
 
     } catch (err) {
