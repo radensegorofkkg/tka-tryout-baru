@@ -1,152 +1,464 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import Teks from '../admin/Teks';
 
-// Helper fungsi agar inisialisasi aman saat proses Build di Vercel
-const getSupabase = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  return createClient(supabaseUrl, supabaseKey);
+const fontDasar = 'sans-serif';
+const kartu = { maxWidth: '820px', margin: '24px auto', padding: '24px', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', fontFamily: fontDasar };
+const tombol = (warna, mati) => ({
+  backgroundColor: mati ? '#a0aec0' : warna, color: '#fff', border: 'none', padding: '10px 20px',
+  borderRadius: '8px', cursor: mati ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '15px',
+});
+
+// 'kosong' | 'sebagian' | 'penuh'
+function statusJawab(soal, j) {
+  if (j === null || j === undefined) return 'kosong';
+  if (soal.tipe === 'PG') return j ? 'penuh' : 'kosong';
+  if (soal.tipe === 'PG_KOMPLEKS') return Array.isArray(j) && j.length > 0 ? 'penuh' : 'kosong';
+  const jumlah = Object.keys(j).length;
+  const total = soal.tipe === 'BENAR_SALAH' ? soal.opsi.length : soal.opsi.kiri.length;
+  if (jumlah === 0) return 'kosong';
+  return jumlah >= total ? 'penuh' : 'sebagian';
+}
+
+const format = (d) => {
+  const m = Math.floor(d / 60);
+  const s = d % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
 export default function HalamanUjian() {
-  const [soalList, setSoalList] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [jawaban, setJawaban] = useState({});
-  const [namaPeserta, setNamaPeserta] = useState('');
-  const [nomorPeserta, setNomorPeserta] = useState('');
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [fase, setFase] = useState('memuat'); // memuat | menunggu | siap | ujian | selesai | galat
+  const [pesan, setPesan] = useState('');
+  const [nama, setNama] = useState('');
+  const [nomor, setNomor] = useState('');
+  const [info, setInfo] = useState(null);
+  const [namaUjian, setNamaUjian] = useState('');
+  const [soal, setSoal] = useState([]);
+  const [jawaban, setJawaban] = useState({});
+  const [idx, setIdx] = useState(0);
+  const [sisa, setSisa] = useState(0);
+  const [belum, setBelum] = useState(0);
+  const [sibuk, setSibuk] = useState(false);
 
-  useEffect(() => {
-    const nama = localStorage.getItem('peserta_nama');
-    const nomor = localStorage.getItem('peserta_nomor');
-    if (!nama || !nomor) {
-      router.push('/');
-      return;
+  const batasRef = useRef(0);
+  const tertunda = useRef(new Map()); // soal_id -> jawaban terbaru yang belum tersimpan
+  const sedangKirim = useRef(new Set());
+
+  /* ---------- komunikasi dengan server ---------- */
+  const api = async (metode, alamat, body) => {
+    let nomorLokal = '';
+    let token = '';
+    try {
+      nomorLokal = localStorage.getItem('peserta_nomor') || '';
+      token = localStorage.getItem('peserta_token') || '';
+    } catch { /* penyimpanan browser tidak tersedia */ }
+    const headers = { 'x-nomor-ujian': nomorLokal, 'x-sesi-token': token };
+    if (body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(alamat, { method: metode, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    let json = {};
+    try { json = await res.json(); } catch { /* respons bukan JSON */ }
+    return { res, json };
+  };
+
+  const keluarLogin = () => {
+    try {
+      localStorage.removeItem('peserta_nama');
+      localStorage.removeItem('peserta_nomor');
+      localStorage.removeItem('peserta_token');
+    } catch { /* abaikan */ }
+    router.push('/');
+  };
+
+  const tutup = (teks) => {
+    tertunda.current.clear();
+    setBelum(0);
+    setPesan(teks || '');
+    setFase('selesai');
+  };
+
+  const kumpulSelesai = async () => {
+    try {
+      const { res, json } = await api('POST', '/api/siswa/kumpul');
+      if (res.status === 401) { keluarLogin(); return; }
+      if (res.ok) { tutup(''); return; }
+      if (res.status === 403) { tutup(json.pesan || 'Akses ujian sudah ditutup.'); return; }
+      setPesan(json.pesan || 'Gagal mengumpulkan ujian.');
+      setFase('galat');
+    } catch {
+      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
+      setFase('galat');
     }
-    setNamaPeserta(nama);
-    setNomorPeserta(nomor);
+  };
 
-    async function ambilSoal() {
-      const supabase = getSupabase();
-      const { data, error } = await supabase.from('soal').select('*');
-      if (error) {
-        console.error('Gagal mengambil soal:', error);
-      } else {
-        setSoalList(data || []);
-      }
-      setLoading(false);
+  const muatSoal = async () => {
+    try {
+      const { res, json } = await api('GET', '/api/siswa/soal');
+      if (res.status === 401) { keluarLogin(); return; }
+      if (res.status === 403) { tutup(json.pesan || ''); return; }
+      if (!res.ok) { setPesan(json.pesan || 'Gagal mengambil soal.'); setFase('galat'); return; }
+      if (json.waktu_habis) { await kumpulSelesai(); return; }
+      setSoal(json.soal);
+      setJawaban(json.jawaban || {});
+      setNamaUjian(json.ujian.nama);
+      batasRef.current = Date.now() + json.sisa_detik * 1000;
+      setSisa(json.sisa_detik);
+      setIdx(0);
+      setFase('ujian');
+    } catch {
+      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
+      setFase('galat');
     }
-    ambilSoal();
-  }, [router]);
+  };
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        alert('Peringatan! Anda terdeteksi keluar dari halaman ujian.');
+  const muatStatus = async () => {
+    try {
+      const { res, json } = await api('GET', '/api/siswa/ujian');
+      if (res.status === 401) { keluarLogin(); return; }
+      if (!res.ok) { setPesan(json.pesan || 'Gagal memuat data ujian.'); setFase('galat'); return; }
+      setInfo(json);
+      if (!json.ujian) { setFase('menunggu'); return; }
+      if (json.status === 'belum_mulai') setFase('siap');
+      else if (json.status === 'berlangsung') await muatSoal();
+      else if (json.status === 'waktu_habis') await kumpulSelesai();
+      else tutup('');
+    } catch {
+      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
+      setFase('galat');
+    }
+  };
+
+  const mulai = async () => {
+    setSibuk(true);
+    try {
+      const { res, json } = await api('POST', '/api/siswa/ujian');
+      if (res.status === 401) { keluarLogin(); return; }
+      if (res.status === 403) { tutup(json.pesan || ''); return; }
+      if (!res.ok) { alert(json.pesan || 'Gagal memulai ujian.'); return; }
+      await muatSoal();
+    } catch {
+      alert('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  /* ---------- menyimpan jawaban ---------- */
+  const kirim = async (id) => {
+    if (sedangKirim.current.has(id)) return;
+    sedangKirim.current.add(id);
+    try {
+      while (tertunda.current.has(id)) {
+        const nilai = tertunda.current.get(id);
+        let hasil;
+        try {
+          hasil = await api('POST', '/api/siswa/jawab', { soal_id: id, jawaban: nilai });
+        } catch {
+          return; // koneksi bermasalah: tetap di antrean, dicoba lagi otomatis
+        }
+        const { res, json } = hasil;
+        if (res.status === 401) { keluarLogin(); return; }
+        if (res.status === 403) {
+          if (json.waktu_habis) await kumpulSelesai();
+          else tutup(json.pesan || 'Akses ujian sudah ditutup.');
+          return;
+        }
+        if (res.status === 400) { tertunda.current.delete(id); return; }
+        if (!res.ok) return; // kesalahan sementara: dicoba lagi otomatis
+        if (tertunda.current.get(id) === nilai) tertunda.current.delete(id);
+        if (typeof json.sisa_detik === 'number') batasRef.current = Date.now() + json.sisa_detik * 1000;
       }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    } finally {
+      sedangKirim.current.delete(id);
+      setBelum(tertunda.current.size);
+    }
+  };
+
+  const simpan = (id, nilai) => {
+    setJawaban((lama) => {
+      const baru = { ...lama };
+      if (nilai === null) delete baru[id];
+      else baru[id] = nilai;
+      return baru;
+    });
+    tertunda.current.set(id, nilai);
+    setBelum(tertunda.current.size);
+    kirim(id);
+  };
+
+  const kumpul = async () => {
+    const kosong = soal.filter((s) => statusJawab(s, jawaban[s.id]) !== 'penuh').length;
+    const tanya = kosong > 0
+      ? `Masih ada ${kosong} soal yang belum dijawab sepenuhnya. Yakin ingin mengumpulkan? Setelah dikumpulkan, jawaban tidak bisa diubah.`
+      : 'Yakin ingin mengumpulkan jawaban? Setelah dikumpulkan, jawaban tidak bisa diubah.';
+    if (!confirm(tanya)) return;
+    setSibuk(true);
+    try {
+      for (const id of [...tertunda.current.keys()]) await kirim(id);
+      if (tertunda.current.size > 0) {
+        alert('Ada jawaban yang belum tersimpan karena koneksi bermasalah. Periksa internet, tunggu sebentar, lalu coba kumpulkan lagi.');
+        return;
+      }
+      await kumpulSelesai();
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  /* ---------- efek ---------- */
+  useEffect(() => {
+    let n = '';
+    let m = '';
+    let t = '';
+    try {
+      n = localStorage.getItem('peserta_nama') || '';
+      m = localStorage.getItem('peserta_nomor') || '';
+      t = localStorage.getItem('peserta_token') || '';
+    } catch { /* abaikan */ }
+    if (!n || !m || !t) { router.push('/'); return; }
+    setNama(n);
+    setNomor(m);
+    muatStatus();
   }, []);
 
-  const handlePilihOpsi = (idSoal, pilihan) => {
-    setJawaban({ ...jawaban, [idSoal]: pilihan });
-  };
+  // Ruang tunggu: cek tiap 5 detik apakah ujian sudah dibuka admin.
+  useEffect(() => {
+    if (fase !== 'menunggu') return;
+    const t = setInterval(muatStatus, 5000);
+    return () => clearInterval(t);
+  }, [fase]);
 
-  const handleSelesai = async () => {
-    if (!confirm('Apakah Anda yakin ingin mengakhiri dan mengirimkan jawaban ujian?')) return;
-    
-    const supabase = getSupabase();
-    const { error } = await supabase.from('jawaban_peserta').insert([
-      { nomor_ujian: nomorPeserta, nama: namaPeserta, detail_jawaban: jawaban }
-    ]);
+  // Hitung mundur dari jam server; otomatis dikumpulkan saat habis.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    const t = setInterval(() => {
+      const s = Math.max(0, Math.ceil((batasRef.current - Date.now()) / 1000));
+      setSisa(s);
+      if (s <= 0) { clearInterval(t); kumpulSelesai(); }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [fase]);
 
-    if (error) {
-      alert('Terjadi kesalahan saat menyimpan jawaban: ' + error.message);
-    } else {
-      alert('Ujian berhasil dikumpulkan! Terima kasih.');
-      localStorage.clear();
-      router.push('/');
-    }
-  };
+  // Mencoba mengirim ulang jawaban yang belum tersimpan.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    const t = setInterval(() => {
+      for (const id of [...tertunda.current.keys()]) kirim(id);
+    }, 5000);
+    return () => clearInterval(t);
+  }, [fase]);
 
-  if (loading) {
-    return <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>Memuat soal ujian...</div>;
+  // Peringatan jika siswa meninggalkan halaman ujian.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    const aksi = () => {
+      if (document.hidden) alert('Peringatan! Anda terdeteksi keluar dari halaman ujian.');
+    };
+    document.addEventListener('visibilitychange', aksi);
+    return () => document.removeEventListener('visibilitychange', aksi);
+  }, [fase]);
+
+  /* ---------- tampilan ---------- */
+  if (fase === 'memuat') {
+    return <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: fontDasar }}>Memuat…</div>;
   }
 
-  if (soalList.length === 0) {
+  if (fase === 'galat') {
     return (
-      <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
-        <h3>Belum ada soal tersedia di database Supabase.</h3>
-        <p>Silakan isi tabel soal terlebih dahulu.</p>
+      <div style={{ ...kartu, textAlign: 'center' }}>
+        <h3 style={{ marginTop: 0, color: '#c53030' }}>Terjadi kendala</h3>
+        <p>{pesan}</p>
+        <button onClick={() => { setPesan(''); setFase('memuat'); muatStatus(); }} style={tombol('#3182ce')}>Coba Lagi</button>
       </div>
     );
   }
 
-  const soalAktif = soalList[currentIndex];
+  if (fase === 'menunggu') {
+    return (
+      <div style={{ ...kartu, textAlign: 'center' }}>
+        <h2 style={{ marginTop: 0 }}>Halo, {nama}</h2>
+        <p style={{ color: '#4a5568' }}>Nomor ujian: <b>{nomor}</b></p>
+        <p style={{ fontSize: '18px' }}>Ujian belum dibuka.</p>
+        <p style={{ color: '#718096', fontSize: '14px' }}>Tetap di halaman ini. Halaman akan otomatis berubah saat ujian dibuka oleh admin.</p>
+      </div>
+    );
+  }
+
+  if (fase === 'siap') {
+    return (
+      <div style={{ ...kartu, textAlign: 'center' }}>
+        <h2 style={{ marginTop: 0 }}>{info.ujian.nama}</h2>
+        <p style={{ color: '#4a5568' }}>Peserta: <b>{nama}</b> ({nomor})</p>
+        <p>Jumlah soal: <b>{info.ujian.jumlah_soal}</b> · Waktu: <b>{info.ujian.durasi_menit} menit</b></p>
+        <p style={{ color: '#718096', fontSize: '14px' }}>
+          Waktu mulai berjalan setelah Anda menekan tombol di bawah. Jawaban tersimpan otomatis setiap kali Anda memilih.
+        </p>
+        <button onClick={mulai} disabled={sibuk} style={tombol('#38a169', sibuk)}>{sibuk ? 'Memulai…' : 'Mulai Ujian'}</button>
+      </div>
+    );
+  }
+
+  if (fase === 'selesai') {
+    return (
+      <div style={{ ...kartu, textAlign: 'center' }}>
+        <h2 style={{ marginTop: 0, color: '#22543d' }}>✅ Ujian selesai</h2>
+        <p>Terima kasih, {nama}.</p>
+        {pesan
+          ? <p style={{ color: '#4a5568' }}>{pesan}</p>
+          : <p style={{ color: '#4a5568' }}>Jawaban Anda sudah dikumpulkan. Anda boleh menutup halaman ini.</p>}
+      </div>
+    );
+  }
+
+  // fase === 'ujian'
+  const s = soal[idx];
+  const j = jawaban[s.id];
+  const mendesak = sisa <= 300;
+
+  const pilihPG = (k) => simpan(s.id, k);
+  const pilihPK = (k) => {
+    const lama = Array.isArray(j) ? j : [];
+    const baru = lama.includes(k) ? lama.filter((x) => x !== k) : [...lama, k].sort();
+    simpan(s.id, baru.length ? baru : null);
+  };
+  const pilihBS = (k, nilai) => simpan(s.id, { ...(j || {}), [k]: nilai });
+  const pilihJodoh = (kiri, kanan) => {
+    const baru = { ...(j || {}) };
+    if (kanan) baru[kiri] = kanan;
+    else delete baru[kiri];
+    simpan(s.id, Object.keys(baru).length ? baru : null);
+  };
+
+  const warnaNomor = (item, i) => {
+    const st = statusJawab(item, jawaban[item.id]);
+    const aktif = i === idx;
+    return {
+      width: '38px', height: '38px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
+      border: aktif ? '3px solid #2b6cb0' : '1px solid #cbd5e0',
+      backgroundColor: st === 'penuh' ? '#3182ce' : st === 'sebagian' ? '#f6ad55' : '#fff',
+      color: st === 'penuh' ? '#fff' : '#2d3748',
+    };
+  };
+
+  const pilihanGaya = (terpilih) => ({
+    display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', marginBottom: '8px', borderRadius: '8px',
+    border: terpilih ? '2px solid #3182ce' : '1px solid #cbd5e0', backgroundColor: terpilih ? '#ebf8ff' : '#fff',
+    cursor: 'pointer', fontSize: '16px', lineHeight: 1.5, fontFamily: fontDasar,
+  });
 
   return (
-    <main style={{ maxWidth: '700px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif', border: '1px solid #ddd', borderRadius: '8px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-        <span>Peserta: <b>{namaPeserta}</b> ({nomorPeserta})</span>
-        <span>Soal ke {currentIndex + 1} dari {soalList.length}</span>
-      </div>
-
-      <div style={{ marginBottom: '20px' }}>
-        <p style={{ fontSize: '18px', fontWeight: '500', lineHeight: '1.5' }}>{soalAktif.pertanyaan}</p>
-        
-        {soalAktif.url_gambar && (
-          <div style={{ margin: '15px 0' }}>
-            <img src={soalAktif.url_gambar} alt="Ilustrasi Soal" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '5px' }} />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
-          {['A', 'B', 'C', 'D', 'E'].map((opsi) => {
-            const teksOpsi = soalAktif[`opsi_${opsi.toLowerCase()}`];
-            if (!teksOpsi) return null;
-            return (
-              <label key={opsi} style={{ padding: '10px 15px', border: '1px solid #ccc', borderRadius: '5px', cursor: 'pointer', backgroundColor: jawaban[soalAktif.id] === opsi ? '#e6f2ff' : '#fff' }}>
-                <input 
-                  type="radio" 
-                  name={`soal_${soalAktif.id}`} 
-                  checked={jawaban[soalAktif.id] === opsi}
-                  onChange={() => handlePilihOpsi(soalAktif.id, opsi)}
-                  style={{ marginRight: '10px' }}
-                />
-                <b>{opsi}.</b> {teksOpsi}
-              </label>
-            );
-          })}
+    <main style={{ ...kartu, margin: '16px auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', marginBottom: '16px' }}>
+        <div style={{ fontSize: '14px' }}>
+          <b>{namaUjian}</b><br />
+          <span style={{ color: '#718096' }}>{nama} ({nomor})</span>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: mendesak ? '#c53030' : '#2d3748' }}>⏱ {format(sisa)}</div>
+          <div style={{ fontSize: '13px', color: '#718096' }}>Soal {idx + 1} dari {soal.length}</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px', borderTop: '1px solid #eee', paddingTop: '15px' }}>
-        <button 
-          onClick={() => setCurrentIndex(currentIndex - 1)} 
-          disabled={currentIndex === 0}
-          style={{ padding: '10px 20px', cursor: currentIndex === 0 ? 'not-allowed' : 'pointer' }}
-        >
-          Sebelumnya
-        </button>
+      {belum > 0 && (
+        <div style={{ backgroundColor: '#fffaf0', border: '1px solid #fbd38d', color: '#c05621', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '12px' }}>
+          Menyimpan jawaban… Jika pesan ini bertahan lama, periksa koneksi internet Anda. Jawaban akan dikirim ulang otomatis.
+        </div>
+      )}
 
-        {currentIndex < soalList.length - 1 ? (
-          <button 
-            onClick={() => setCurrentIndex(currentIndex + 1)}
-            style={{ padding: '10px 20px', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-          >
-            Selanjutnya
-          </button>
-        ) : (
-          <button 
-            onClick={handleSelesai}
-            style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            Selesai & Kumpulkan
-          </button>
+      {s.stimulus && (
+        <div style={{ backgroundColor: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px', marginBottom: '14px', fontSize: '16px', lineHeight: 1.6 }}>
+          {s.stimulus.isi && <div><Teks>{s.stimulus.isi}</Teks></div>}
+          {s.stimulus.url_gambar && (
+            <img src={s.stimulus.url_gambar} alt="Gambar soal" style={{ maxWidth: '100%', maxHeight: '420px', marginTop: s.stimulus.isi ? '10px' : 0, borderRadius: '6px' }} />
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: '17px', fontWeight: '500', lineHeight: 1.6, marginBottom: '14px' }}>
+        <Teks>{s.pertanyaan}</Teks>
+      </div>
+
+      {s.tipe === 'PG' && s.opsi.map((o) => (
+        <button key={o.k} onClick={() => pilihPG(o.k)} style={pilihanGaya(j === o.k)}>
+          <b>{o.k}.</b> <Teks>{o.teks}</Teks>
+        </button>
+      ))}
+
+      {s.tipe === 'PG_KOMPLEKS' && (
+        <div>
+          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Pilih <b>lebih dari satu</b> jawaban yang benar.</div>
+          {s.opsi.map((o) => {
+            const terpilih = Array.isArray(j) && j.includes(o.k);
+            return (
+              <button key={o.k} onClick={() => pilihPK(o.k)} style={pilihanGaya(terpilih)}>
+                <span style={{ display: 'inline-block', width: '22px' }}>{terpilih ? '☑' : '☐'}</span>
+                <b>{o.k}.</b> <Teks>{o.teks}</Teks>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {s.tipe === 'BENAR_SALAH' && (
+        <div>
+          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Tentukan setiap pernyataan <b>Benar</b> atau <b>Salah</b>.</div>
+          {s.opsi.map((o) => {
+            const v = j ? j[o.k] : undefined;
+            return (
+              <div key={o.k} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px' }}>
+                <div style={{ marginBottom: '8px', fontSize: '16px', lineHeight: 1.5 }}><Teks>{o.teks}</Teks></div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => pilihBS(o.k, true)} style={{ ...pilihanGaya(v === true), width: 'auto', marginBottom: 0, padding: '6px 18px' }}>Benar</button>
+                  <button onClick={() => pilihBS(o.k, false)} style={{ ...pilihanGaya(v === false), width: 'auto', marginBottom: 0, padding: '6px 18px' }}>Salah</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {s.tipe === 'JODOH' && (
+        <div>
+          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Pasangkan setiap pernyataan di kiri dengan pilihan yang sesuai.</div>
+          {s.opsi.kiri.map((o) => (
+            <div key={o.k} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px' }}>
+              <div style={{ marginBottom: '8px', fontSize: '16px', lineHeight: 1.5 }}><Teks>{o.teks}</Teks></div>
+              <select
+                value={j && j[o.k] ? j[o.k] : ''}
+                onChange={(e) => pilihJodoh(o.k, e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '15px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+              >
+                <option value="">-- Pilih pasangan --</option>
+                {s.opsi.kanan.map((p) => (
+                  <option key={p.k} value={p.k}>{p.teks}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid #edf2f7' }}>
+        <button onClick={() => setIdx(idx - 1)} disabled={idx === 0} style={tombol('#4a5568', idx === 0)}>Sebelumnya</button>
+        {idx < soal.length - 1
+          ? <button onClick={() => setIdx(idx + 1)} style={tombol('#3182ce')}>Selanjutnya</button>
+          : <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>{sibuk ? 'Mengumpulkan…' : 'Selesai & Kumpulkan'}</button>}
+      </div>
+
+      <div style={{ marginTop: '22px' }}>
+        <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>
+          Nomor soal (biru = sudah dijawab, oranye = sebagian, putih = belum):
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {soal.map((item, i) => (
+            <button key={item.id} onClick={() => setIdx(i)} style={warnaNomor(item, i)}>{i + 1}</button>
+          ))}
+        </div>
+        {idx < soal.length - 1 && (
+          <div style={{ marginTop: '16px', textAlign: 'right' }}>
+            <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>Kumpulkan Ujian</button>
+          </div>
         )}
       </div>
     </main>
