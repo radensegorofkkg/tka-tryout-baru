@@ -1,466 +1,85 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import Teks from '../admin/Teks';
+import { NextResponse } from 'next/server';
+import { buatDb, cekSiswa } from '../../../../lib/siswaAuth';
 
-const fontDasar = 'sans-serif';
-const kartu = { maxWidth: '820px', margin: '24px auto', padding: '24px', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', fontFamily: fontDasar };
-const tombol = (warna, mati) => ({
-  backgroundColor: mati ? '#a0aec0' : warna, color: '#fff', border: 'none', padding: '10px 20px',
-  borderRadius: '8px', cursor: mati ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '15px',
-});
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// 'kosong' | 'sebagian' | 'penuh'
-function statusJawab(soal, j) {
-  if (j === null || j === undefined) return 'kosong';
-  if (soal.tipe === 'PG') return j ? 'penuh' : 'kosong';
-  if (soal.tipe === 'PG_KOMPLEKS') return Array.isArray(j) && j.length > 0 ? 'penuh' : 'kosong';
-  const jumlah = Object.keys(j).length;
-  const total = soal.tipe === 'BENAR_SALAH' ? soal.opsi.length : soal.opsi.kiri.length;
-  if (jumlah === 0) return 'kosong';
-  return jumlah >= total ? 'penuh' : 'sebagian';
+const salah = (pesan, status = 400) => NextResponse.json({ pesan }, { status });
+const TIDAK_VALID = 'Sesi login tidak valid. Silakan login lagi.';
+
+function sisaDetik(sesi, ujian) {
+  const menit = ujian.durasi_menit + (sesi.tambahan_menit || 0);
+  const batas = new Date(sesi.mulai_at).getTime() + menit * 60 * 1000;
+  return Math.max(0, Math.floor((batas - Date.now()) / 1000));
 }
 
-const format = (d) => {
-  const m = Math.floor(d / 60);
-  const s = d % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-};
+// Mengirim soal ujian untuk siswa ini, sesuai urutan acaknya.
+// PENTING: kunci jawaban dan pembahasan TIDAK pernah dikirim ke siswa
+// (keduanya ada di tabel kunci_soal yang tidak dibaca di sini).
+export async function GET(request) {
+  const db = buatDb();
+  if (!db) return salah('Konfigurasi server belum lengkap.', 500);
+  const siswa = await cekSiswa(db, request);
+  if (!siswa) return salah(TIDAK_VALID, 401);
 
-export default function HalamanUjian() {
-  const router = useRouter();
-  const [fase, setFase] = useState('memuat'); // memuat | menunggu | siap | ujian | selesai | galat
-  const [pesan, setPesan] = useState('');
-  const [nama, setNama] = useState('');
-  const [nomor, setNomor] = useState('');
-  const [info, setInfo] = useState(null);
-  const [namaUjian, setNamaUjian] = useState('');
-  const [soal, setSoal] = useState([]);
-  const [jawaban, setJawaban] = useState({});
-  const [idx, setIdx] = useState(0);
-  const [sisa, setSisa] = useState(0);
-  const [belum, setBelum] = useState(0);
-  const [sibuk, setSibuk] = useState(false);
+  try {
+    const { data: u, error: eu } = await db
+      .from('ujian')
+      .select('id, nama, durasi_menit')
+      .eq('status', 'aktif')
+      .maybeSingle();
+    if (eu) throw new Error(eu.message);
+    if (!u) return salah('Ujian sedang tidak aktif. Tunggu arahan pengawas.', 409);
 
-  const batasRef = useRef(0);
-  const tertunda = useRef(new Map()); // soal_id -> jawaban terbaru yang belum tersimpan
-  const sedangKirim = useRef(new Set());
+    const { data: sesi, error: es } = await db
+      .from('sesi_ujian')
+      .select('id, mulai_at, selesai_at, tambahan_menit, urutan')
+      .eq('ujian_id', u.id)
+      .eq('nomor_ujian', siswa.nomor_ujian)
+      .maybeSingle();
+    if (es) throw new Error(es.message);
+    if (!sesi) return salah('Ujian belum dimulai. Tekan tombol mulai terlebih dahulu.', 409);
+    if (sesi.selesai_at) return salah('Anda sudah mengumpulkan ujian ini.', 403);
 
-  /* ---------- komunikasi dengan server ---------- */
-  const api = async (metode, alamat, body) => {
-    let nomorLokal = '';
-    let token = '';
-    try {
-      nomorLokal = localStorage.getItem('peserta_nomor') || '';
-      token = localStorage.getItem('peserta_token') || '';
-    } catch { /* penyimpanan browser tidak tersedia */ }
-    const headers = { 'x-nomor-ujian': nomorLokal, 'x-sesi-token': token };
-    if (body) headers['Content-Type'] = 'application/json';
-    const res = await fetch(alamat, { method: metode, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
-    let json = {};
-    try { json = await res.json(); } catch { /* respons bukan JSON */ }
-    return { res, json };
-  };
+    const sisa = sisaDetik(sesi, u);
+    if (sisa <= 0) return NextResponse.json({ waktu_habis: true });
 
-  const keluarLogin = () => {
-    try {
-      localStorage.removeItem('peserta_nama');
-      localStorage.removeItem('peserta_nomor');
-      localStorage.removeItem('peserta_token');
-    } catch { /* abaikan */ }
-    router.push('/');
-  };
+    const urutan = Array.isArray(sesi.urutan) ? sesi.urutan : [];
+    if (urutan.length === 0) return salah('Data soal sesi ini kosong. Hubungi pengawas.', 500);
 
-  const tutup = (teks) => {
-    tertunda.current.clear();
-    setBelum(0);
-    setPesan(teks || '');
-    setFase('selesai');
-  };
+    const { data: baris, error: eb } = await db
+      .from('soal')
+      .select('id, tipe, pertanyaan, opsi, stimulus(id, isi, url_gambar)')
+      .in('id', urutan);
+    if (eb) throw new Error(eb.message);
+    const peta = new Map(baris.map((b) => [b.id, b]));
 
-  const kumpulSelesai = async () => {
-    try {
-      const { res, json } = await api('POST', '/api/siswa/kumpul');
-      if (res.status === 401) { keluarLogin(); return; }
-      if (res.ok) { tutup(''); return; }
-      if (res.status === 403) { tutup(json.pesan || 'Akses ujian sudah ditutup.'); return; }
-      setPesan(json.pesan || 'Gagal mengumpulkan ujian.');
-      setFase('galat');
-    } catch {
-      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
-      setFase('galat');
-    }
-  };
+    const soal = urutan
+      .map((id) => peta.get(id))
+      .filter(Boolean)
+      .map((b, i) => ({
+        nomor: i + 1,
+        id: b.id,
+        tipe: b.tipe,
+        pertanyaan: b.pertanyaan,
+        opsi: b.opsi,
+        stimulus: b.stimulus ? { id: b.stimulus.id, isi: b.stimulus.isi, url_gambar: b.stimulus.url_gambar } : null,
+      }));
 
-  const muatSoal = async () => {
-    try {
-      const { res, json } = await api('GET', '/api/siswa/soal');
-      if (res.status === 401) { keluarLogin(); return; }
-      if (res.status === 403) { tutup(json.pesan || ''); return; }
-      if (!res.ok) { setPesan(json.pesan || 'Gagal mengambil soal.'); setFase('galat'); return; }
-      if (json.waktu_habis) { await kumpulSelesai(); return; }
-      setSoal(json.soal);
-      setJawaban(json.jawaban || {});
-      setNamaUjian(json.ujian.nama);
-      batasRef.current = Date.now() + json.sisa_detik * 1000;
-      setSisa(json.sisa_detik);
-      setIdx(0);
-      setFase('ujian');
-    } catch {
-      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
-      setFase('galat');
-    }
-  };
+    const { data: tersimpan, error: ej } = await db
+      .from('jawaban')
+      .select('soal_id, jawaban')
+      .eq('sesi_id', sesi.id);
+    if (ej) throw new Error(ej.message);
+    const jawaban = Object.fromEntries(tersimpan.map((j) => [j.soal_id, j.jawaban]));
 
-  const muatStatus = async () => {
-    try {
-      const { res, json } = await api('GET', '/api/siswa/ujian');
-      if (res.status === 401) { keluarLogin(); return; }
-      if (!res.ok) { setPesan(json.pesan || 'Gagal memuat data ujian.'); setFase('galat'); return; }
-      setInfo(json);
-      if (!json.ujian) { setFase('menunggu'); return; }
-      if (json.status === 'belum_mulai') setFase('siap');
-      else if (json.status === 'berlangsung') await muatSoal();
-      else if (json.status === 'waktu_habis') await kumpulSelesai();
-      else tutup('');
-    } catch {
-      setPesan('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
-      setFase('galat');
-    }
-  };
-
-  const mulai = async () => {
-    setSibuk(true);
-    try {
-      const { res, json } = await api('POST', '/api/siswa/ujian');
-      if (res.status === 401) { keluarLogin(); return; }
-      if (res.status === 403) { tutup(json.pesan || ''); return; }
-      if (!res.ok) { alert(json.pesan || 'Gagal memulai ujian.'); return; }
-      await muatSoal();
-    } catch {
-      alert('Tidak bisa menghubungi server. Periksa koneksi internet.');
-    } finally {
-      setSibuk(false);
-    }
-  };
-
-  /* ---------- menyimpan jawaban ---------- */
-  const kirim = async (id) => {
-    if (sedangKirim.current.has(id)) return;
-    sedangKirim.current.add(id);
-    try {
-      while (tertunda.current.has(id)) {
-        const nilai = tertunda.current.get(id);
-        let hasil;
-        try {
-          hasil = await api('POST', '/api/siswa/jawab', { soal_id: id, jawaban: nilai });
-        } catch {
-          return; // koneksi bermasalah: tetap di antrean, dicoba lagi otomatis
-        }
-        const { res, json } = hasil;
-        if (res.status === 401) { keluarLogin(); return; }
-        if (res.status === 403) {
-          if (json.waktu_habis) await kumpulSelesai();
-          else tutup(json.pesan || 'Akses ujian sudah ditutup.');
-          return;
-        }
-        if (res.status === 400) { tertunda.current.delete(id); return; }
-        if (!res.ok) return; // kesalahan sementara: dicoba lagi otomatis
-        if (tertunda.current.get(id) === nilai) tertunda.current.delete(id);
-        if (typeof json.sisa_detik === 'number') batasRef.current = Date.now() + json.sisa_detik * 1000;
-      }
-    } finally {
-      sedangKirim.current.delete(id);
-      setBelum(tertunda.current.size);
-    }
-  };
-
-  const simpan = (id, nilai) => {
-    setJawaban((lama) => {
-      const baru = { ...lama };
-      if (nilai === null) delete baru[id];
-      else baru[id] = nilai;
-      return baru;
+    return NextResponse.json({
+      ujian: { nama: u.nama, durasi_menit: u.durasi_menit },
+      sisa_detik: sisa,
+      soal,
+      jawaban,
     });
-    tertunda.current.set(id, nilai);
-    setBelum(tertunda.current.size);
-    kirim(id);
-  };
-
-  const kumpul = async () => {
-    const kosong = soal.filter((s) => statusJawab(s, jawaban[s.id]) !== 'penuh').length;
-    const tanya = kosong > 0
-      ? `Masih ada ${kosong} soal yang belum dijawab sepenuhnya. Yakin ingin mengumpulkan? Setelah dikumpulkan, jawaban tidak bisa diubah.`
-      : 'Yakin ingin mengumpulkan jawaban? Setelah dikumpulkan, jawaban tidak bisa diubah.';
-    if (!confirm(tanya)) return;
-    setSibuk(true);
-    try {
-      for (const id of [...tertunda.current.keys()]) await kirim(id);
-      if (tertunda.current.size > 0) {
-        alert('Ada jawaban yang belum tersimpan karena koneksi bermasalah. Periksa internet, tunggu sebentar, lalu coba kumpulkan lagi.');
-        return;
-      }
-      await kumpulSelesai();
-    } finally {
-      setSibuk(false);
-    }
-  };
-
-  /* ---------- efek ---------- */
-  useEffect(() => {
-    let n = '';
-    let m = '';
-    let t = '';
-    try {
-      n = localStorage.getItem('peserta_nama') || '';
-      m = localStorage.getItem('peserta_nomor') || '';
-      t = localStorage.getItem('peserta_token') || '';
-    } catch { /* abaikan */ }
-    if (!n || !m || !t) { router.push('/'); return; }
-    setNama(n);
-    setNomor(m);
-    muatStatus();
-  }, []);
-
-  // Ruang tunggu: cek tiap 5 detik apakah ujian sudah dibuka admin.
-  useEffect(() => {
-    if (fase !== 'menunggu') return;
-    const t = setInterval(muatStatus, 5000);
-    return () => clearInterval(t);
-  }, [fase]);
-
-  // Hitung mundur dari jam server; otomatis dikumpulkan saat habis.
-  useEffect(() => {
-    if (fase !== 'ujian') return;
-    const t = setInterval(() => {
-      const s = Math.max(0, Math.ceil((batasRef.current - Date.now()) / 1000));
-      setSisa(s);
-      if (s <= 0) { clearInterval(t); kumpulSelesai(); }
-    }, 1000);
-    return () => clearInterval(t);
-  }, [fase]);
-
-  // Mencoba mengirim ulang jawaban yang belum tersimpan.
-  useEffect(() => {
-    if (fase !== 'ujian') return;
-    const t = setInterval(() => {
-      for (const id of [...tertunda.current.keys()]) kirim(id);
-    }, 5000);
-    return () => clearInterval(t);
-  }, [fase]);
-
-  // Peringatan jika siswa meninggalkan halaman ujian.
-  useEffect(() => {
-    if (fase !== 'ujian') return;
-    const aksi = () => {
-      if (document.hidden) alert('Peringatan! Anda terdeteksi keluar dari halaman ujian.');
-    };
-    document.addEventListener('visibilitychange', aksi);
-    return () => document.removeEventListener('visibilitychange', aksi);
-  }, [fase]);
-
-  /* ---------- tampilan ---------- */
-  if (fase === 'memuat') {
-    return <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: fontDasar }}>Memuat…</div>;
+  } catch (e) {
+    return salah('Gagal mengambil soal. Coba muat ulang halaman.', 500);
   }
-
-  if (fase === 'galat') {
-    return (
-      <div style={{ ...kartu, textAlign: 'center' }}>
-        <h3 style={{ marginTop: 0, color: '#c53030' }}>Terjadi kendala</h3>
-        <p>{pesan}</p>
-        <button onClick={() => { setPesan(''); setFase('memuat'); muatStatus(); }} style={tombol('#3182ce')}>Coba Lagi</button>
-      </div>
-    );
-  }
-
-  if (fase === 'menunggu') {
-    return (
-      <div style={{ ...kartu, textAlign: 'center' }}>
-        <h2 style={{ marginTop: 0 }}>Halo, {nama}</h2>
-        <p style={{ color: '#4a5568' }}>Nomor ujian: <b>{nomor}</b></p>
-        <p style={{ fontSize: '18px' }}>Ujian belum dibuka.</p>
-        <p style={{ color: '#718096', fontSize: '14px' }}>Tetap di halaman ini. Halaman akan otomatis berubah saat ujian dibuka oleh admin.</p>
-      </div>
-    );
-  }
-
-  if (fase === 'siap') {
-    return (
-      <div style={{ ...kartu, textAlign: 'center' }}>
-        <h2 style={{ marginTop: 0 }}>{info.ujian.nama}</h2>
-        <p style={{ color: '#4a5568' }}>Peserta: <b>{nama}</b> ({nomor})</p>
-        <p>Jumlah soal: <b>{info.ujian.jumlah_soal}</b> · Waktu: <b>{info.ujian.durasi_menit} menit</b></p>
-        <p style={{ color: '#718096', fontSize: '14px' }}>
-          Waktu mulai berjalan setelah Anda menekan tombol di bawah. Jawaban tersimpan otomatis setiap kali Anda memilih.
-        </p>
-        <button onClick={mulai} disabled={sibuk} style={tombol('#38a169', sibuk)}>{sibuk ? 'Memulai…' : 'Mulai Ujian'}</button>
-      </div>
-    );
-  }
-
-  if (fase === 'selesai') {
-    return (
-      <div style={{ ...kartu, textAlign: 'center' }}>
-        <h2 style={{ marginTop: 0, color: '#22543d' }}>✅ Ujian selesai</h2>
-        <p>Terima kasih, {nama}.</p>
-        {pesan
-          ? <p style={{ color: '#4a5568' }}>{pesan}</p>
-          : <p style={{ color: '#4a5568' }}>Jawaban Anda sudah dikumpulkan. Anda boleh menutup halaman ini.</p>}
-      </div>
-    );
-  }
-
-  // fase === 'ujian'
-  const s = soal[idx];
-  const j = jawaban[s.id];
-  const mendesak = sisa <= 300;
-
-  const pilihPG = (k) => simpan(s.id, k);
-  const pilihPK = (k) => {
-    const lama = Array.isArray(j) ? j : [];
-    const baru = lama.includes(k) ? lama.filter((x) => x !== k) : [...lama, k].sort();
-    simpan(s.id, baru.length ? baru : null);
-  };
-  const pilihBS = (k, nilai) => simpan(s.id, { ...(j || {}), [k]: nilai });
-  const pilihJodoh = (kiri, kanan) => {
-    const baru = { ...(j || {}) };
-    if (kanan) baru[kiri] = kanan;
-    else delete baru[kiri];
-    simpan(s.id, Object.keys(baru).length ? baru : null);
-  };
-
-  const warnaNomor = (item, i) => {
-    const st = statusJawab(item, jawaban[item.id]);
-    const aktif = i === idx;
-    return {
-      width: '38px', height: '38px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
-      border: aktif ? '3px solid #2b6cb0' : '1px solid #cbd5e0',
-      backgroundColor: st === 'penuh' ? '#3182ce' : st === 'sebagian' ? '#f6ad55' : '#fff',
-      color: st === 'penuh' ? '#fff' : '#2d3748',
-    };
-  };
-
-  const pilihanGaya = (terpilih) => ({
-    display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', marginBottom: '8px', borderRadius: '8px',
-    border: terpilih ? '2px solid #3182ce' : '1px solid #cbd5e0', backgroundColor: terpilih ? '#ebf8ff' : '#fff',
-    cursor: 'pointer', fontSize: '16px', lineHeight: 1.5, fontFamily: fontDasar,
-  });
-
-  return (
-    <main style={{ ...kartu, margin: '16px auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', marginBottom: '16px' }}>
-        <div style={{ fontSize: '14px' }}>
-          <b>{namaUjian}</b><br />
-          <span style={{ color: '#718096' }}>{nama} ({nomor})</span>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '22px', fontWeight: 'bold', color: mendesak ? '#c53030' : '#2d3748' }}>⏱ {format(sisa)}</div>
-          <div style={{ fontSize: '13px', color: '#718096' }}>Soal {idx + 1} dari {soal.length}</div>
-        </div>
-      </div>
-
-      {belum > 0 && (
-        <div style={{ backgroundColor: '#fffaf0', border: '1px solid #fbd38d', color: '#c05621', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '12px' }}>
-          Menyimpan jawaban… Jika pesan ini bertahan lama, periksa koneksi internet Anda. Jawaban akan dikirim ulang otomatis.
-        </div>
-      )}
-
-      {s.stimulus && (
-        <div style={{ backgroundColor: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px', marginBottom: '14px', fontSize: '16px', lineHeight: 1.6 }}>
-          {s.stimulus.isi && <div><Teks>{s.stimulus.isi}</Teks></div>}
-          {s.stimulus.url_gambar && (
-            <img src={s.stimulus.url_gambar} alt="Gambar soal" style={{ maxWidth: '100%', maxHeight: '420px', marginTop: s.stimulus.isi ? '10px' : 0, borderRadius: '6px' }} />
-          )}
-        </div>
-      )}
-
-      <div style={{ fontSize: '17px', fontWeight: '500', lineHeight: 1.6, marginBottom: '14px' }}>
-        <Teks>{s.pertanyaan}</Teks>
-      </div>
-
-      {s.tipe === 'PG' && s.opsi.map((o) => (
-        <button key={o.k} onClick={() => pilihPG(o.k)} style={pilihanGaya(j === o.k)}>
-          <b>{o.k}.</b> <Teks>{o.teks}</Teks>
-        </button>
-      ))}
-
-      {s.tipe === 'PG_KOMPLEKS' && (
-        <div>
-          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Pilih <b>lebih dari satu</b> jawaban yang benar.</div>
-          {s.opsi.map((o) => {
-            const terpilih = Array.isArray(j) && j.includes(o.k);
-            return (
-              <button key={o.k} onClick={() => pilihPK(o.k)} style={pilihanGaya(terpilih)}>
-                <span style={{ display: 'inline-block', width: '22px' }}>{terpilih ? '☑' : '☐'}</span>
-                <b>{o.k}.</b> <Teks>{o.teks}</Teks>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {s.tipe === 'BENAR_SALAH' && (
-        <div>
-          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Tentukan setiap pernyataan <b>Benar</b> atau <b>Salah</b>.</div>
-          {s.opsi.map((o) => {
-            const v = j ? j[o.k] : undefined;
-            return (
-              <div key={o.k} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px' }}>
-                <div style={{ marginBottom: '8px', fontSize: '16px', lineHeight: 1.5 }}><Teks>{o.teks}</Teks></div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => pilihBS(o.k, true)} style={{ ...pilihanGaya(v === true), width: 'auto', marginBottom: 0, padding: '6px 18px' }}>Benar</button>
-                  <button onClick={() => pilihBS(o.k, false)} style={{ ...pilihanGaya(v === false), width: 'auto', marginBottom: 0, padding: '6px 18px' }}>Salah</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {s.tipe === 'JODOH' && (
-        <div>
-          <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>Pasangkan setiap pernyataan di kiri dengan pilihan yang sesuai.</div>
-          {s.opsi.kiri.map((o) => (
-            <div key={o.k} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px' }}>
-              <div style={{ marginBottom: '8px', fontSize: '16px', lineHeight: 1.5 }}><Teks>{o.teks}</Teks></div>
-              <select
-                value={j && j[o.k] ? j[o.k] : ''}
-                onChange={(e) => pilihJodoh(o.k, e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', fontSize: '15px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
-              >
-                <option value="">-- Pilih pasangan --</option>
-                {s.opsi.kanan.map((p) => (
-                  <option key={p.k} value={p.k}>{p.teks}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid #edf2f7' }}>
-        <button onClick={() => setIdx(idx - 1)} disabled={idx === 0} style={tombol('#4a5568', idx === 0)}>Sebelumnya</button>
-        {idx < soal.length - 1
-          ? <button onClick={() => setIdx(idx + 1)} style={tombol('#3182ce')}>Selanjutnya</button>
-          : <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>{sibuk ? 'Mengumpulkan…' : 'Selesai & Kumpulkan'}</button>}
-      </div>
-
-      <div style={{ marginTop: '22px' }}>
-        <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>
-          Nomor soal (biru = sudah dijawab, oranye = sebagian, putih = belum):
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {soal.map((item, i) => (
-            <button key={item.id} onClick={() => setIdx(i)} style={warnaNomor(item, i)}>{i + 1}</button>
-          ))}
-        </div>
-        {idx < soal.length - 1 && (
-          <div style={{ marginTop: '16px', textAlign: 'right' }}>
-            <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>Kumpulkan Ujian</button>
-          </div>
-        )}
-      </div>
-    </main>
-  );
 }
