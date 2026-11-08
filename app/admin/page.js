@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import ImporSoal from './ImporSoal';
+import MenuUjian from './MenuUjian';
 
 const getSupabase = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -223,7 +224,7 @@ export default function AdminDashboard() {
 
         {/* Tab Navigation */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-          {['siswa', 'soal', 'pengaturan'].map((tab) => (
+          {['siswa', 'soal', 'ujian', 'pengaturan'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -238,7 +239,7 @@ export default function AdminDashboard() {
                 color: activeTab === tab ? '#fff' : '#4a5568',
               }}
             >
-              {tab === 'siswa' ? '👥 Database Siswa' : tab === 'soal' ? '📝 Input & Import Soal' : '⚙️ Pengaturan Ujian'}
+              {tab === 'siswa' ? '👥 Database Siswa' : tab === 'soal' ? '📝 Input & Import Soal' : tab === 'ujian' ? '🗓️ Ujian' : '⚙️ Pengaturan Ujian'}
             </button>
           ))}
         </div>
@@ -318,6 +319,11 @@ export default function AdminDashboard() {
         {/* TAB 2: INPUT & IMPORT SOAL */}
         {activeTab === 'soal' && (
           <ImporSoal sandi={sandi} onKeluar={() => keluarAdmin('Sesi berakhir atau kata sandi berubah. Silakan masuk lagi.')} />
+        )}
+
+        {/* TAB UJIAN */}
+        {activeTab === 'ujian' && (
+          <MenuUjian sandi={sandi} onKeluar={() => keluarAdmin('Sesi berakhir atau kata sandi berubah. Silakan masuk lagi.')} />
         )}
 
         {/* TAB 3: PENGATURAN */}
