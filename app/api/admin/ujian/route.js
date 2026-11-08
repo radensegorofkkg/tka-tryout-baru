@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cekAdmin } from '../../../../lib/adminAuth';
+import { nilaiSesi } from '../../../../lib/penilaian';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // penilaian banyak siswa sekaligus butuh waktu
 
 const salah = (pesan, status = 400) => NextResponse.json({ pesan }, { status });
 const tolak = () => salah('Kata sandi admin salah.', 401);
@@ -28,6 +30,36 @@ async function ambilSemua(buatQuery) {
 }
 
 const jumlahSoalDari = (u) => u.ujian_soal?.[0]?.count ?? 0;
+
+// Menutup dan menilai semua sesi yang belum dikumpulkan (jawaban yang sudah terkirim tetap dihitung).
+async function tutupSesiBelumSelesai(db, ujianId) {
+  const sesi = await ambilSemua(() =>
+    db.from('sesi_ujian').select('id').eq('ujian_id', ujianId).is('selesai_at', null).order('id')
+  );
+  let berhasil = 0;
+  let gagal = 0;
+  for (let i = 0; i < sesi.length; i += 8) {
+    const kelompok = sesi.slice(i, i + 8);
+    const hasil = await Promise.all(
+      kelompok.map(async (s) => {
+        try {
+          const nilai = await nilaiSesi(db, s.id);
+          const { error } = await db
+            .from('sesi_ujian')
+            .update({ selesai_at: new Date().toISOString(), skor: nilai.total })
+            .eq('id', s.id)
+            .is('selesai_at', null);
+          if (error) throw new Error(error.message);
+          return true;
+        } catch {
+          return false;
+        }
+      })
+    );
+    hasil.forEach((ok) => (ok ? berhasil++ : gagal++));
+  }
+  return { berhasil, gagal };
+}
 
 /* ---------- GET: daftar ujian + file impor yang bisa dipilih ---------- */
 export async function GET(request) {
@@ -136,7 +168,23 @@ async function ubahStatus(db, b) {
     if (eu.code === '23505') return salah('Masih ada ujian lain yang aktif. Selesaikan dulu ujian itu.', 409);
     throw new Error(eu.message);
   }
+  if (baru === 'selesai') {
+    // Ujian sudah ditutup (siswa tidak bisa menyimpan jawaban lagi); sekarang sesi yang belum dikumpulkan dinilai.
+    const tutup = await tutupSesiBelumSelesai(db, id);
+    return NextResponse.json({ ok: true, ...tutup });
+  }
   return NextResponse.json({ ok: true });
+}
+
+async function tutupSesi(db, b) {
+  const id = Number(b.id);
+  if (!Number.isInteger(id)) return salah('Permintaan tidak valid.');
+  const { data: u, error } = await db.from('ujian').select('id, status').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!u) return salah('Ujian tidak ditemukan.', 404);
+  if (u.status !== 'selesai') return salah('Ujian ini belum diselesaikan. Tekan Selesai dulu.');
+  const tutup = await tutupSesiBelumSelesai(db, id);
+  return NextResponse.json({ ok: true, ...tutup });
 }
 
 async function ubahDurasi(db, b) {
@@ -186,6 +234,7 @@ export async function POST(request) {
       case 'buat': return await buat(db, body);
       case 'status': return await ubahStatus(db, body);
       case 'durasi': return await ubahDurasi(db, body);
+      case 'tutup_sesi': return await tutupSesi(db, body);
       case 'hapus': return await hapus(db, body);
       default: return salah('Aksi tidak dikenal.');
     }
