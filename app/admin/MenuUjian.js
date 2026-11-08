@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import PantauUjian from './PantauUjian';
 
 const kotak = { backgroundColor: '#f7fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' };
 const tombol = (warna, mati) => ({
@@ -18,6 +19,7 @@ export default function MenuUjian({ sandi, onKeluar }) {
   const [galat, setGalat] = useState('');
   const [info, setInfo] = useState('');
   const [sibuk, setSibuk] = useState(false);
+  const [pantauId, setPantauId] = useState(null);
 
   const [nama, setNama] = useState('');
   const [mapelId, setMapelId] = useState('');
@@ -188,7 +190,8 @@ export default function MenuUjian({ sandi, onKeluar }) {
       {data.ujian.map((u) => {
         const l = LENCANA[u.status] || LENCANA.draft;
         return (
-          <div key={u.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div key={u.id} style={{ marginBottom: '8px' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
                 {u.nama}{' '}
@@ -199,6 +202,9 @@ export default function MenuUjian({ sandi, onKeluar }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <button onClick={() => setPantauId(pantauId === u.id ? null : u.id)} style={tombol('#2b6cb0', false)}>
+                {pantauId === u.id ? 'Tutup Pantauan' : 'Pantau'}
+              </button>
               {u.status !== 'aktif' && (
                 <button onClick={() => aktifkan(u)} disabled={sibuk || adaAktif} style={tombol('#38a169', sibuk || adaAktif)}>
                   {u.status === 'selesai' ? 'Aktifkan Lagi' : 'Aktifkan'}
@@ -214,6 +220,10 @@ export default function MenuUjian({ sandi, onKeluar }) {
                 <button onClick={() => hapus(u)} disabled={sibuk} style={tombol('#e53e3e', sibuk)}>Hapus</button>
               )}
             </div>
+          </div>
+          {pantauId === u.id && (
+            <PantauUjian ujianId={u.id} sandi={sandi} onKeluar={onKeluar} />
+          )}
           </div>
         );
       })}
