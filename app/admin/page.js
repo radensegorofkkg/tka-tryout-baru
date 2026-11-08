@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import ImporSoal from './ImporSoal';
 
 const getSupabase = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -11,7 +12,6 @@ const getSupabase = () => {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('siswa');
   const [students, setStudents] = useState([]);
-  const [soalList, setSoalList] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Form State Siswa
@@ -19,32 +19,68 @@ export default function AdminDashboard() {
   const [namaLengkap, setNamaLengkap] = useState('');
   const [bulkData, setBulkData] = useState('');
 
-  // Form State Soal
-  const [pertanyaan, setPertanyaan] = useState('');
-  const [opsiA, setOpsiA] = useState('');
-  const [opsiB, setOpsiB] = useState('');
-  const [opsiC, setOpsiC] = useState('');
-  const [opsiD, setOpsiD] = useState('');
-  const [kunci, setKunci] = useState('A');
-
   // Form State Pengaturan
   const [durasi, setDurasi] = useState(60);
 
+  // Gerbang kata sandi admin
+  const [sandi, setSandi] = useState('');
+  const [terbuka, setTerbuka] = useState(false);
+  const [memeriksaSandi, setMemeriksaSandi] = useState(true);
+  const [inputSandi, setInputSandi] = useState('');
+  const [galatMasuk, setGalatMasuk] = useState('');
+
+  const verifikasiSandi = async (s) => {
+    try {
+      const res = await fetch('/api/admin/cek', { method: 'POST', headers: { 'x-admin-password': s } });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const keluarAdmin = (pesan) => {
+    try { sessionStorage.removeItem('admin_sandi'); } catch {}
+    setSandi('');
+    setTerbuka(false);
+    setInputSandi('');
+    setGalatMasuk(pesan || '');
+  };
+
   useEffect(() => {
-    fetchStudents();
-    fetchSoal();
+    let tersimpan = '';
+    try { tersimpan = sessionStorage.getItem('admin_sandi') || ''; } catch {}
+    if (!tersimpan) { setMemeriksaSandi(false); return; }
+    verifikasiSandi(tersimpan).then((ok) => {
+      if (ok) { setSandi(tersimpan); setTerbuka(true); }
+      else { try { sessionStorage.removeItem('admin_sandi'); } catch {} }
+      setMemeriksaSandi(false);
+    });
   }, []);
+
+  const handleMasuk = async (e) => {
+    e.preventDefault();
+    setGalatMasuk('');
+    setMemeriksaSandi(true);
+    const ok = await verifikasiSandi(inputSandi);
+    setMemeriksaSandi(false);
+    if (ok) {
+      try { sessionStorage.setItem('admin_sandi', inputSandi); } catch {}
+      setSandi(inputSandi);
+      setTerbuka(true);
+      setInputSandi('');
+    } else {
+      setGalatMasuk('Kata sandi salah.');
+    }
+  };
+
+  useEffect(() => {
+    if (terbuka) fetchStudents();
+  }, [terbuka]);
 
   const fetchStudents = async () => {
     const supabase = getSupabase();
     const { data } = await supabase.from('students').select('*').order('created_at', { ascending: false });
     if (data) setStudents(data);
-  };
-
-  const fetchSoal = async () => {
-    const supabase = getSupabase();
-    const { data } = await supabase.from('soal').select('*').order('id', { ascending: true });
-    if (data) setSoalList(data);
   };
 
   // Helper: Unduh File Template CSV
@@ -62,11 +98,6 @@ export default function AdminDashboard() {
   const handleDownloadTemplateSiswa = () => {
     const csvContent = 'nomor_ujian,nama_lengkap\n20528639-001,AHMAD DANI\n20528639-002,SITI NURHALIZA';
     downloadCSV(csvContent, 'template_siswa_tryout.csv');
-  };
-
-  const handleDownloadTemplateSoal = () => {
-    const csvContent = 'pertanyaan,opsi_a,opsi_b,opsi_c,opsi_d,kunci_jawaban\nIbu kota Indonesia saat ini adalah...,Jakarta,Surabaya,Bandung,Medan,A\nHasil dari 15 x 3 adalah...,30,45,50,60,B';
-    downloadCSV(csvContent, 'template_soal_tryout.csv');
   };
 
   // Tambah Siswa Single
@@ -125,53 +156,6 @@ export default function AdminDashboard() {
     reader.readAsText(file);
   };
 
-  // Upload File CSV Soal
-  const handleFileUploadSoal = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const text = evt.target.result;
-      const lines = text.trim().split('\n');
-      if (lines.length < 2) {
-        alert('File CSV kosong atau format tidak sesuai.');
-        return;
-      }
-
-      const newSoal = [];
-      for (let i = 1; i < lines.length; i++) {
-        const row = lines[i].split(',');
-        if (row.length >= 6) {
-          newSoal.push({
-            pertanyaan: row[0].trim(),
-            opsi_a: row[1].trim(),
-            opsi_b: row[2].trim(),
-            opsi_c: row[3].trim(),
-            opsi_d: row[4].trim(),
-            kunci_jawaban: row[5].trim().toUpperCase()
-          });
-        }
-      }
-
-      if (newSoal.length === 0) {
-        alert('Tidak ada soal valid yang terdeteksi di file.');
-        return;
-      }
-
-      setLoading(true);
-      const supabase = getSupabase();
-      const { error } = await supabase.from('soal').insert(newSoal);
-      setLoading(false);
-
-      if (error) alert('Gagal import soal: ' + error.message);
-      else {
-        alert(`Berhasil mengimpor ${newSoal.length} soal!`);
-        fetchSoal();
-      }
-    };
-    reader.readAsText(file);
-  };
-
   // Reset Status Login Siswa
   const handleResetLogin = async (nomor) => {
     const supabase = getSupabase();
@@ -180,43 +164,11 @@ export default function AdminDashboard() {
   };
 
   // Hapus Siswa
-  const handleDeleteStudent = async (id) => {
+  const handleDeleteStudent = async (nomor) => {
     if (!confirm('Yakin ingin menghapus siswa ini?')) return;
     const supabase = getSupabase();
-    await supabase.from('students').delete().eq('id', id);
+    await supabase.from('students').delete().eq('nomor_ujian', nomor);
     fetchStudents();
-  };
-
-  // Tambah Soal Manual
-  const handleAddSoal = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    const supabase = getSupabase();
-    const { error } = await supabase.from('soal').insert([
-      {
-        pertanyaan,
-        opsi_a: opsiA,
-        opsi_b: opsiB,
-        opsi_c: opsiC,
-        opsi_d: opsiD,
-        kunci_jawaban: kunci
-      }
-    ]);
-    setLoading(false);
-    if (error) alert('Gagal menambah soal: ' + error.message);
-    else {
-      alert('Soal berhasil ditambahkan!');
-      setPertanyaan(''); setOpsiA(''); setOpsiB(''); setOpsiC(''); setOpsiD('');
-      fetchSoal();
-    }
-  };
-
-  // Hapus Soal
-  const handleDeleteSoal = async (id) => {
-    if (!confirm('Yakin ingin menghapus soal ini?')) return;
-    const supabase = getSupabase();
-    await supabase.from('soal').delete().eq('id', id);
-    fetchSoal();
   };
 
   const copyLinkUjian = () => {
@@ -224,6 +176,30 @@ export default function AdminDashboard() {
     navigator.clipboard.writeText(link);
     alert('Link Tryout berhasil disalin: ' + link);
   };
+
+  if (!terbuka) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4f6f9', fontFamily: 'sans-serif', padding: '16px' }}>
+        <form onSubmit={handleMasuk} style={{ width: '100%', maxWidth: '380px', backgroundColor: '#fff', padding: '28px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          <h1 style={{ margin: '0 0 4px', fontSize: '22px', color: '#1a202c' }}>Masuk Admin</h1>
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#718096' }}>Dashboard Admin Tryout TKA</p>
+          <input
+            type="password"
+            value={inputSandi}
+            onChange={(e) => setInputSandi(e.target.value)}
+            placeholder="Kata sandi admin"
+            autoFocus
+            required
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '14px' }}
+          />
+          {galatMasuk && <div style={{ color: '#c53030', fontSize: '13px', marginTop: '8px' }}>{galatMasuk}</div>}
+          <button type="submit" disabled={memeriksaSandi} style={{ width: '100%', marginTop: '14px', backgroundColor: memeriksaSandi ? '#a0aec0' : '#3182ce', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: memeriksaSandi ? 'not-allowed' : 'pointer' }}>
+            {memeriksaSandi ? 'Memeriksa…' : 'Masuk'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'sans-serif', backgroundColor: '#f4f6f9', minHeight: '100vh', padding: '24px' }}>
@@ -235,9 +211,14 @@ export default function AdminDashboard() {
             <h1 style={{ margin: 0, fontSize: '24px', color: '#1a202c' }}>Dashboard Admin Tryout TKA</h1>
             <p style={{ margin: '4px 0 0', color: '#718096', fontSize: '14px' }}>Kelola data siswa, soal, dan pengaturan ujian tanpa perlu buka GitHub/Vercel</p>
           </div>
-          <button onClick={copyLinkUjian} style={{ backgroundColor: '#319795', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-            📋 Salin Link Tryout Siswa
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={copyLinkUjian} style={{ backgroundColor: '#319795', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              📋 Salin Link Tryout Siswa
+            </button>
+            <button onClick={() => keluarAdmin('')} style={{ backgroundColor: '#e2e8f0', color: '#4a5568', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Keluar
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -313,7 +294,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {students.map((s) => (
-                  <tr key={s.id}>
+                  <tr key={s.nomor_ujian}>
                     <td style={{ padding: '8px', border: '1px solid #e2e8f0', fontWeight: 'bold' }}>{s.nomor_ujian}</td>
                     <td style={{ padding: '8px', border: '1px solid #e2e8f0' }}>{s.nama_lengkap}</td>
                     <td style={{ padding: '8px', border: '1px solid #e2e8f0' }}>
@@ -325,7 +306,7 @@ export default function AdminDashboard() {
                       {s.is_logged_in && (
                         <button onClick={() => handleResetLogin(s.nomor_ujian)} style={{ backgroundColor: '#ed8936', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Reset Status</button>
                       )}
-                      <button onClick={() => handleDeleteStudent(s.id)} style={{ backgroundColor: '#e53e3e', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Hapus</button>
+                      <button onClick={() => handleDeleteStudent(s.nomor_ujian)} style={{ backgroundColor: '#e53e3e', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Hapus</button>
                     </td>
                   </tr>
                 ))}
@@ -336,68 +317,7 @@ export default function AdminDashboard() {
 
         {/* TAB 2: INPUT & IMPORT SOAL */}
         {activeTab === 'soal' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', backgroundColor: '#ebf8ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bee3f8' }}>
-              <div style={{ fontSize: '14px', color: '#2b6cb0' }}>
-                <strong>Ingin Import Soal dari Excel/CSV?</strong> Unduh format templatnya terlebih dahulu.
-              </div>
-              <button onClick={handleDownloadTemplateSoal} style={{ backgroundColor: '#3182ce', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
-                📥 Unduh Template CSV Soal
-              </button>
-            </div>
-
-            {/* Form Upload File Soal */}
-            <div style={{ backgroundColor: '#f7fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-              <h3 style={{ marginTop: 0, fontSize: '16px' }}>Import Soal via File CSV</h3>
-              <input type="file" accept=".csv" onChange={handleFileUploadSoal} style={{ fontSize: '14px' }} />
-              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#718096' }}>*Pilih file CSV yang sudah diisi sesuai struktur template.</p>
-            </div>
-
-            {/* Form Tambah Soal Manual */}
-            <div style={{ backgroundColor: '#f7fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-              <h3 style={{ marginTop: 0 }}>Tambah Soal Manual</h3>
-              <form onSubmit={handleAddSoal} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Pertanyaan / Soal:</label>
-                  <textarea rows="3" value={pertanyaan} onChange={(e) => setPertanyaan(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box' }} required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <input type="text" placeholder="Pilihan A" value={opsiA} onChange={(e) => setOpsiA(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
-                  <input type="text" placeholder="Pilihan B" value={opsiB} onChange={(e) => setOpsiB(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
-                  <input type="text" placeholder="Pilihan C" value={opsiC} onChange={(e) => setOpsiC(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
-                  <input type="text" placeholder="Pilihan D" value={opsiD} onChange={(e) => setOpsiD(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }} required />
-                </div>
-                <div>
-                  <label style={{ fontWeight: 'bold', marginRight: '8px' }}>Kunci Jawaban Benar:</label>
-                  <select value={kunci} onChange={(e) => setKunci(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e0', fontWeight: 'bold' }}>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="D">D</option>
-                  </select>
-                </div>
-                <button type="submit" disabled={loading} style={{ backgroundColor: '#38a169', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '8px' }}>Simpan Soal ke Database</button>
-              </form>
-            </div>
-
-            <h3>Daftar Soal Tersimpan ({soalList.length})</h3>
-            {soalList.map((item, idx) => (
-              <div key={item.id} style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                  <span>Soal #{idx + 1}</span>
-                  <button onClick={() => handleDeleteSoal(item.id)} style={{ backgroundColor: '#e53e3e', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Hapus Soal</button>
-                </div>
-                <p style={{ margin: '8px 0', fontSize: '15px' }}>{item.pertanyaan}</p>
-                <div style={{ fontSize: '14px', color: '#4a5568', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                  <div>A. {item.opsi_a}</div>
-                  <div>B. {item.opsi_b}</div>
-                  <div>C. {item.opsi_c}</div>
-                  <div>D. {item.opsi_d}</div>
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>Kunci Jawaban: {item.kunci_jawaban}</div>
-              </div>
-            ))}
-          </div>
+          <ImporSoal sandi={sandi} onKeluar={() => keluarAdmin('Sesi berakhir atau kata sandi berubah. Silakan masuk lagi.')} />
         )}
 
         {/* TAB 3: PENGATURAN */}
