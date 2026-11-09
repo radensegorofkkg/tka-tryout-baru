@@ -59,6 +59,8 @@ export async function GET(request) {
     const siswa = await ambilSemua(() =>
       db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in').order('nomor_ujian')
     );
+    const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
+    const namaSekolah = new Map((dataSekolah || []).map((x) => [x.npsn, x.nama]));
     const sesi = await ambilSemua(() =>
       db
         .from('sesi_ujian')
@@ -85,6 +87,7 @@ export async function GET(request) {
       return {
         nomor_ujian: s.nomor_ujian,
         nama_lengkap: s.nama_lengkap,
+        sekolah: namaSekolah.get(String(s.nomor_ujian).split('-')[0]) || null,
         is_logged_in: s.is_logged_in,
         status,
         sesi_id: se ? se.id : null,
