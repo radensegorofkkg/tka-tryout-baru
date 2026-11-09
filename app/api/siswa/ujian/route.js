@@ -60,11 +60,9 @@ async function ambilSesi(db, ujianId, nomor) {
 export async function GET(request) {
   const db = buatDb();
   if (!db) return salah('Konfigurasi server belum lengkap.', 500);
-  const siswa = await cekSiswa(db, request);
-  if (!siswa) return salah(TIDAK_VALID, 401);
-
   try {
-    const u = await ujianAktif(db);
+    const [siswa, u] = await Promise.all([cekSiswa(db, request), ujianAktif(db)]);
+    if (!siswa) return salah(TIDAK_VALID, 401);
     if (!u) return NextResponse.json({ siswa, ujian: null });
 
     const sesi = await ambilSesi(db, u.id, siswa.nomor_ujian);
@@ -92,11 +90,9 @@ export async function GET(request) {
 export async function POST(request) {
   const db = buatDb();
   if (!db) return salah('Konfigurasi server belum lengkap.', 500);
-  const siswa = await cekSiswa(db, request);
-  if (!siswa) return salah(TIDAK_VALID, 401);
-
   try {
-    const u = await ujianAktif(db);
+    const [siswa, u] = await Promise.all([cekSiswa(db, request), ujianAktif(db)]);
+    if (!siswa) return salah(TIDAK_VALID, 401);
     if (!u) return salah('Ujian belum dibuka oleh admin. Tunggu arahan pengawas.', 409);
 
     const sudah = await ambilSesi(db, u.id, siswa.nomor_ujian);
