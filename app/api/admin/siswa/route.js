@@ -35,7 +35,9 @@ export async function GET(request) {
     const siswa = await ambilSemua(() =>
       db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in').order('nomor_ujian')
     );
-    return NextResponse.json({ siswa });
+    const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
+    const sekolah = Object.fromEntries((dataSekolah || []).map((x) => [x.npsn, x.nama]));
+    return NextResponse.json({ siswa, sekolah });
   } catch (e) {
     return salah('Gagal membaca data siswa: ' + e.message, 500);
   }
