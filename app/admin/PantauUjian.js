@@ -25,6 +25,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
   const [cari, setCari] = useState('');
   const [saring, setSaring] = useState('semua');
   const [terakhir, setTerakhir] = useState('');
+  const [mengunduh, setMengunduh] = useState(false);
   const sedangMuat = useRef(false);
 
   const panggil = async (metode, alamat, body) => {
@@ -119,6 +120,36 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
     );
   }
 
+  const unduhHasil = async () => {
+    setMengunduh(true);
+    setGalat('');
+    try {
+      const res = await fetch(`/api/admin/ekspor?ujian_id=${ujianId}`, { headers: { 'x-admin-password': sandi }, cache: 'no-store' });
+      if (res.status === 401) { onKeluar(); return; }
+      if (!res.ok) {
+        let pesan = 'Gagal mengunduh hasil.';
+        try { pesan = (await res.json()).pesan || pesan; } catch { /* bukan JSON */ }
+        setGalat(pesan);
+        return;
+      }
+      const blob = await res.blob();
+      const nama = String(data.ujian.nama || 'ujian').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'ujian';
+      const tgl = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Hasil-${nama}-${tgl}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      setInfo('File hasil berhasil diunduh.');
+    } catch {
+      setGalat('Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba lagi.');
+    } finally {
+      setMengunduh(false);
+    }
+  };
+
   const kata = cari.trim().toLowerCase();
   const tampil = data.siswa.filter(
     (s) =>
@@ -141,6 +172,9 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
         <b style={{ fontSize: '15px' }}>Pantauan: {data.ujian.nama}</b>
         <span style={{ fontSize: '12px', color: '#718096' }}>Diperbarui otomatis tiap 10 detik{terakhir ? ` · terakhir ${terakhir}` : ''}</span>
+        <button onClick={unduhHasil} disabled={mengunduh} style={{ ...mini('#2f855a', mengunduh), padding: '6px 12px', fontSize: '13px', fontWeight: 'bold' }}>
+          {mengunduh ? 'Menyusun file…' : '📥 Unduh Hasil (Excel)'}
+        </button>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
