@@ -6,7 +6,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const jeda = (ms) => new Promise((r) => setTimeout(r, ms));
-const rapikan = (t) => String(t ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+// Menyeragamkan spasi dan tanda petik (’ ‘ ` dijadikan ') supaya nama seperti MI'ROJ cocok
+// walau HP siswa mengetik petik yang bentuknya berbeda.
+const rapikan = (t) =>
+  String(t ?? '')
+    .replace(/[\u2018\u2019\u02BC`\u00B4]/g, "'")
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
 
 // Login siswa. Dijalankan di server, jadi aturan "satu akun hanya bisa login satu kali"
 // tidak bisa dilewati dari browser.
