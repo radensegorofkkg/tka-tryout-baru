@@ -137,6 +137,13 @@ export default function DataSiswa({ sandi, onKeluar }) {
     aksi({ aksi: 'reset_login', nomor_ujian: s.nomor_ujian }, `Login ${s.nama_lengkap} sudah direset.`);
   };
 
+  const resetSemua = async () => {
+    const n = (daftar || []).filter((s) => s.is_logged_in).length;
+    if (n === 0) { setInfo('Tidak ada siswa yang berstatus sudah login.'); return; }
+    if (!confirm(`Reset login untuk ${n} siswa yang sedang berstatus sudah login?\n\nPakai ini hanya saat tidak ada ujian berlangsung (misalnya setelah uji coba). Siswa yang sedang mengerjakan akan keluar dari ujian dan harus login lagi.`)) return;
+    aksi({ aksi: 'reset_semua' }, `Login ${n} siswa sudah direset.`);
+  };
+
   const hapus = (s) => {
     if (!confirm(`Hapus siswa ${s.nama_lengkap} (${s.nomor_ujian})?`)) return;
     aksi({ aksi: 'hapus', nomor_ujian: s.nomor_ujian }, `Siswa ${s.nama_lengkap} dihapus.`);
@@ -298,6 +305,13 @@ export default function DataSiswa({ sandi, onKeluar }) {
       <h3 style={{ fontSize: '16px' }}>
         Daftar Peserta Terdaftar {daftar ? `(${semua.length} siswa · ${Object.keys(hitungSekolah).length} sekolah · ${sudahLogin} sudah login)` : ''}
       </h3>
+      {daftar && sudahLogin > 0 && (
+        <div style={{ marginBottom: '10px' }}>
+          <button onClick={resetSemua} disabled={sibuk} style={tombol('#dd6b20', sibuk)}>
+            Reset Semua Login ({sudahLogin})
+          </button>
+        </div>
+      )}
       {!daftar && <div style={{ fontSize: '14px', color: '#718096' }}>Memuat data siswa…</div>}
       {daftar && (
         <div>
