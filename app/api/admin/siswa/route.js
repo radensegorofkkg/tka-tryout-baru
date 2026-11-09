@@ -80,6 +80,16 @@ async function resetLogin(db, b) {
   return NextResponse.json({ ok: true });
 }
 
+async function resetSemua(db) {
+  const { data, error } = await db
+    .from('students')
+    .update({ is_logged_in: false, sesi_token: null })
+    .eq('is_logged_in', true)
+    .select('nomor_ujian');
+  if (error) throw new Error(error.message);
+  return NextResponse.json({ ok: true, jumlah: data ? data.length : 0 });
+}
+
 export async function POST(request) {
   if (!cekAdmin(request)) return salah('Kata sandi admin salah.', 401);
   const db = buatDb();
@@ -97,6 +107,7 @@ export async function POST(request) {
       case 'tambah': return await tambah(db, body);
       case 'hapus': return await hapus(db, body);
       case 'reset_login': return await resetLogin(db, body);
+      case 'reset_semua': return await resetSemua(db);
       default: return salah('Aksi tidak dikenal.');
     }
   } catch (e) {
