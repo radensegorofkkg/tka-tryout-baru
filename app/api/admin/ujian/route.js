@@ -171,7 +171,15 @@ async function ubahStatus(db, b) {
   if (baru === 'selesai') {
     // Ujian sudah ditutup (siswa tidak bisa menyimpan jawaban lagi); sekarang sesi yang belum dikumpulkan dinilai.
     const tutup = await tutupSesiBelumSelesai(db, id);
-    return NextResponse.json({ ok: true, ...tutup });
+    // Setelah ujian ditutup dan dinilai, semua siswa dikeluarkan dari status "sudah login"
+    // supaya bisa login lagi untuk ujian berikutnya. Selama ujian aktif, aturan satu-kali-login tetap berlaku.
+    const { data: direset, error: er } = await db
+      .from('students')
+      .update({ is_logged_in: false, sesi_token: null })
+      .eq('is_logged_in', true)
+      .select('nomor_ujian');
+    if (er) return NextResponse.json({ ok: true, ...tutup, catatan_login: 'Ujian ditutup, tetapi reset login otomatis gagal. Gunakan tombol Reset Semua Login di tab Database Siswa.' });
+    return NextResponse.json({ ok: true, ...tutup, login_direset: direset ? direset.length : 0 });
   }
   return NextResponse.json({ ok: true });
 }
