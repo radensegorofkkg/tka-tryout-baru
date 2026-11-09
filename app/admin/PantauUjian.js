@@ -123,7 +123,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
   const tampil = data.siswa.filter(
     (s) =>
       (saring === 'semua' || s.status === saring) &&
-      (!kata || s.nama_lengkap.toLowerCase().includes(kata) || s.nomor_ujian.toLowerCase().includes(kata))
+      (!kata || s.nama_lengkap.toLowerCase().includes(kata) || s.nomor_ujian.toLowerCase().includes(kata) || (s.sekolah || '').toLowerCase().includes(kata))
   );
   const r = data.ringkas;
   const chip = (teks, nilai, st) => (
@@ -168,7 +168,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
 
       <input
         type="text"
-        placeholder="Cari nama atau nomor ujian…"
+        placeholder="Cari nama, nomor ujian, atau sekolah…"
         value={cari}
         onChange={(e) => setCari(e.target.value)}
         style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px', width: '100%', maxWidth: '320px', boxSizing: 'border-box', marginBottom: '10px' }}
@@ -180,6 +180,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
             <tr style={{ backgroundColor: '#edf2f7', textAlign: 'left', position: 'sticky', top: 0 }}>
               <th style={sel}>No Ujian</th>
               <th style={sel}>Nama</th>
+              <th style={sel}>Sekolah</th>
               <th style={sel}>Status</th>
               <th style={sel}>Dijawab</th>
               <th style={sel}>Sisa waktu</th>
@@ -189,7 +190,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
           </thead>
           <tbody>
             {tampil.length === 0 && (
-              <tr><td colSpan="7" style={{ ...sel, color: '#718096' }}>Tidak ada siswa yang cocok.</td></tr>
+              <tr><td colSpan="8" style={{ ...sel, color: '#718096' }}>Tidak ada siswa yang cocok.</td></tr>
             )}
             {tampil.map((s) => {
               const l = STATUS[s.status];
@@ -198,6 +199,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
                 <tr key={s.nomor_ujian}>
                   <td style={{ ...sel, fontWeight: 'bold' }}>{s.nomor_ujian}</td>
                   <td style={sel}>{s.nama_lengkap}</td>
+                  <td style={sel}>{s.sekolah || '-'}</td>
                   <td style={sel}>
                     <span style={{ backgroundColor: l.latar, color: l.warna, padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{l.teks}</span>
                   </td>
