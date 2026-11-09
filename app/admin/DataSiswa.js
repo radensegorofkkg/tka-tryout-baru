@@ -23,6 +23,7 @@ const LABEL_STATUS = {
 
 export default function DataSiswa({ sandi, onKeluar }) {
   const [daftar, setDaftar] = useState(null);
+  const [namaSekolah, setNamaSekolah] = useState({});
   const [galat, setGalat] = useState('');
   const [info, setInfo] = useState('');
   const [sibuk, setSibuk] = useState(false);
@@ -59,6 +60,7 @@ export default function DataSiswa({ sandi, onKeluar }) {
       if (keluar) return;
       if (!res.ok) { setGalat(json.pesan || 'Gagal memuat data siswa.'); return; }
       setDaftar(json.siswa);
+      setNamaSekolah(json.sekolah || {});
     } catch {
       setGalat('Tidak bisa menghubungi server. Periksa koneksi internet.');
     }
@@ -153,7 +155,7 @@ export default function DataSiswa({ sandi, onKeluar }) {
   const tampil = semua.filter(
     (s) =>
       (sekolah === 'semua' || npsnDari(s.nomor_ujian) === sekolah) &&
-      (!kata || s.nama_lengkap.toLowerCase().includes(kata) || s.nomor_ujian.toLowerCase().includes(kata))
+      (!kata || s.nama_lengkap.toLowerCase().includes(kata) || s.nomor_ujian.toLowerCase().includes(kata) || (namaSekolah[npsnDari(s.nomor_ujian)] || '').toLowerCase().includes(kata))
   );
   const sudahLogin = semua.filter((s) => s.is_logged_in).length;
 
@@ -302,11 +304,11 @@ export default function DataSiswa({ sandi, onKeluar }) {
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
             <select value={sekolah} onChange={(e) => { setSekolah(e.target.value); setBatas(200); }} style={{ ...isian, minWidth: '220px' }}>
               <option value="semua">Semua sekolah ({semua.length})</option>
-              {Object.keys(hitungSekolah).sort().map((n) => (
-                <option key={n} value={n}>NPSN {n} ({hitungSekolah[n]} siswa)</option>
+              {Object.keys(hitungSekolah).sort((a, b) => (namaSekolah[a] || a).localeCompare(namaSekolah[b] || b)).map((n) => (
+                <option key={n} value={n}>{namaSekolah[n] ? `${namaSekolah[n]} (${n})` : `NPSN ${n} - belum ada di daftar sekolah`} · {hitungSekolah[n]} siswa</option>
               ))}
             </select>
-            <input type="text" placeholder="Cari nama atau nomor ujian…" value={cari} onChange={(e) => { setCari(e.target.value); setBatas(200); }} style={{ ...isian, flex: '1 1 240px' }} />
+            <input type="text" placeholder="Cari nama, nomor ujian, atau sekolah…" value={cari} onChange={(e) => { setCari(e.target.value); setBatas(200); }} style={{ ...isian, flex: '1 1 240px' }} />
           </div>
           <div style={{ maxHeight: '520px', overflow: 'auto', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -314,7 +316,7 @@ export default function DataSiswa({ sandi, onKeluar }) {
                 <tr style={{ backgroundColor: '#edf2f7', textAlign: 'left', position: 'sticky', top: 0 }}>
                   <th style={sel}>No Ujian</th>
                   <th style={sel}>Nama Lengkap</th>
-                  <th style={sel}>Sekolah (NPSN)</th>
+                  <th style={sel}>Sekolah</th>
                   <th style={sel}>Status Login</th>
                   <th style={sel}>Aksi</th>
                 </tr>
@@ -327,7 +329,7 @@ export default function DataSiswa({ sandi, onKeluar }) {
                   <tr key={s.nomor_ujian}>
                     <td style={{ ...sel, fontWeight: 'bold' }}>{s.nomor_ujian}</td>
                     <td style={sel}>{s.nama_lengkap}</td>
-                    <td style={sel}>{npsnDari(s.nomor_ujian)}</td>
+                    <td style={sel}>{namaSekolah[npsnDari(s.nomor_ujian)] || `NPSN ${npsnDari(s.nomor_ujian)} (belum ada di daftar)`}</td>
                     <td style={sel}>
                       <span style={{ backgroundColor: s.is_logged_in ? '#feebc8' : '#c6f6d5', color: s.is_logged_in ? '#c05621' : '#22543d', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                         {s.is_logged_in ? 'Sudah login' : 'Belum login'}
