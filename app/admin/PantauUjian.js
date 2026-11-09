@@ -26,6 +26,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
   const [saring, setSaring] = useState('semua');
   const [terakhir, setTerakhir] = useState('');
   const [mengunduh, setMengunduh] = useState(false);
+  const [mengatur, setMengatur] = useState(false);
   const sedangMuat = useRef(false);
 
   const panggil = async (metode, alamat, body) => {
@@ -150,6 +151,30 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
     }
   };
 
+  const aturPeringkat = async (terbuka) => {
+    if (terbuka && !confirm('Buka peringkat untuk umum?\nSiapa saja yang memegang link peringkat bisa melihat nama (disamarkan), sekolah, dan nilai siswa yang sudah selesai.')) return;
+    setMengatur(true);
+    setInfo(''); setGalat('');
+    try {
+      const { res, json, keluar } = await panggil('POST', '/api/admin/peringkat', { ujian_id: ujianId, terbuka });
+      if (keluar) return;
+      if (!res.ok) { setGalat(json.pesan || 'Gagal mengatur peringkat.'); return; }
+      setInfo(terbuka ? 'Peringkat dibuka. Salin link peringkat lalu bagikan.' : 'Peringkat ditutup.');
+      await muat();
+    } catch {
+      setGalat('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    } finally {
+      setMengatur(false);
+    }
+  };
+
+  const salinLinkPeringkat = () => {
+    const dasar = (process.env.NEXT_PUBLIC_URL_TRYOUT || window.location.origin).replace(/\/+$/, '');
+    const link = `${dasar}/peringkat`;
+    try { navigator.clipboard.writeText(link); } catch { /* abaikan */ }
+    alert(`Link peringkat disalin:\n${link}`);
+  };
+
   const kata = cari.trim().toLowerCase();
   const tampil = data.siswa.filter(
     (s) =>
@@ -175,6 +200,18 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
         <button onClick={unduhHasil} disabled={mengunduh} style={{ ...mini('#2f855a', mengunduh), padding: '6px 12px', fontSize: '13px', fontWeight: 'bold' }}>
           {mengunduh ? 'Menyusun file…' : '📥 Unduh Hasil (Excel)'}
         </button>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', marginBottom: '10px', fontSize: '13px' }}>
+        <span>🏆 Peringkat publik: <b style={{ color: data.ujian.peringkat_terbuka ? '#22543d' : '#9b2c2c' }}>{data.ujian.peringkat_terbuka ? 'TERBUKA' : 'Tertutup'}</b></span>
+        {data.ujian.peringkat_terbuka ? (
+          <>
+            <button onClick={salinLinkPeringkat} style={{ ...mini('#319795'), padding: '6px 12px', fontSize: '13px' }}>📋 Salin Link Peringkat</button>
+            <button onClick={() => aturPeringkat(false)} disabled={mengatur} style={{ ...mini('#e53e3e', mengatur), padding: '6px 12px', fontSize: '13px' }}>Tutup Peringkat</button>
+          </>
+        ) : (
+          <button onClick={() => aturPeringkat(true)} disabled={mengatur} style={{ ...mini('#3182ce', mengatur), padding: '6px 12px', fontSize: '13px' }}>Buka Peringkat</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
