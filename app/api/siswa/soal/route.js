@@ -19,15 +19,13 @@ function sisaDetik(sesi, ujian) {
 export async function GET(request) {
   const db = buatDb();
   if (!db) return salah('Konfigurasi server belum lengkap.', 500);
-  const siswa = await cekSiswa(db, request);
-  if (!siswa) return salah(TIDAK_VALID, 401);
-
   try {
-    const { data: u, error: eu } = await db
-      .from('ujian')
-      .select('id, nama, durasi_menit')
-      .eq('status', 'aktif')
-      .maybeSingle();
+    // Pemeriksaan siswa dan pencarian ujian aktif dijalankan bersamaan (lebih cepat).
+    const [siswa, { data: u, error: eu }] = await Promise.all([
+      cekSiswa(db, request),
+      db.from('ujian').select('id, nama, durasi_menit').eq('status', 'aktif').maybeSingle(),
+    ]);
+    if (!siswa) return salah(TIDAK_VALID, 401);
     if (eu) throw new Error(eu.message);
     if (!u) return salah('Ujian sedang tidak aktif. Tunggu arahan pengawas.', 409);
 
@@ -47,11 +45,13 @@ export async function GET(request) {
     const urutan = Array.isArray(sesi.urutan) ? sesi.urutan : [];
     if (urutan.length === 0) return salah('Data soal sesi ini kosong. Hubungi pengawas.', 500);
 
-    const { data: baris, error: eb } = await db
-      .from('soal')
-      .select('id, tipe, pertanyaan, opsi, stimulus(id, isi, url_gambar)')
-      .in('id', urutan);
+    // Soal dan jawaban tersimpan diambil bersamaan.
+    const [{ data: baris, error: eb }, { data: tersimpan, error: ej }] = await Promise.all([
+      db.from('soal').select('id, tipe, pertanyaan, opsi, stimulus(id, isi, url_gambar)').in('id', urutan),
+      db.from('jawaban').select('soal_id, jawaban').eq('sesi_id', sesi.id),
+    ]);
     if (eb) throw new Error(eb.message);
+    if (ej) throw new Error(ej.message);
     const peta = new Map(baris.map((b) => [b.id, b]));
 
     const soal = urutan
@@ -66,11 +66,6 @@ export async function GET(request) {
         stimulus: b.stimulus ? { id: b.stimulus.id, isi: b.stimulus.isi, url_gambar: b.stimulus.url_gambar } : null,
       }));
 
-    const { data: tersimpan, error: ej } = await db
-      .from('jawaban')
-      .select('soal_id, jawaban')
-      .eq('sesi_id', sesi.id);
-    if (ej) throw new Error(ej.message);
     const jawaban = Object.fromEntries(tersimpan.map((j) => [j.soal_id, j.jawaban]));
 
     return NextResponse.json({
