@@ -45,7 +45,7 @@ export async function GET(request) {
   try {
     const { data: u, error: eu } = await db
       .from('ujian')
-      .select('id, nama, durasi_menit, status')
+      .select('id, nama, durasi_menit, status, peringkat_terbuka')
       .eq('id', ujianId)
       .maybeSingle();
     if (eu) throw new Error(eu.message);
