@@ -94,7 +94,14 @@ export default function MenuUjian({ sandi, onKeluar }) {
   };
 
   const hapus = (u) => {
-    if (!confirm(`Hapus ujian draft "${u.nama}"? Soal di bank soal tidak ikut terhapus.`)) return;
+    if (u.status === 'selesai') {
+      const ketik = prompt(
+        `HAPUS PERMANEN ujian "${u.nama}"?\n\nSeluruh jawaban dan nilai siswa pada ujian ini ikut terhapus dan TIDAK BISA dikembalikan. Peringkatnya juga hilang. Soal di bank soal tidak ikut terhapus.\n\nPastikan hasilnya sudah diunduh ke Excel (tombol Unduh Hasil di Pantau).\n\nKetik HAPUS (huruf besar) untuk melanjutkan:`
+      );
+      if (ketik === null) return;
+      if (ketik.trim() !== 'HAPUS') { setGalat('Penghapusan dibatalkan: kata HAPUS tidak diketik dengan benar.'); return; }
+    } else if (!confirm(`Hapus ujian draft "${u.nama}"? Soal di bank soal tidak ikut terhapus.`)) return;
+    if (pantauId === u.id) setPantauId(null);
     kirim({ aksi: 'hapus', id: u.id }, () => `Ujian "${u.nama}" dihapus.`);
   };
 
@@ -216,7 +223,7 @@ export default function MenuUjian({ sandi, onKeluar }) {
               {u.status !== 'aktif' && (
                 <button onClick={() => ubahDurasi(u)} disabled={sibuk} style={tombol('#4a5568', sibuk)}>Ubah Durasi</button>
               )}
-              {u.status === 'draft' && (
+              {u.status !== 'aktif' && (
                 <button onClick={() => hapus(u)} disabled={sibuk} style={tombol('#e53e3e', sibuk)}>Hapus</button>
               )}
             </div>
