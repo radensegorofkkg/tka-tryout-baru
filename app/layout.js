@@ -1,3 +1,5 @@
+import Footer from './Footer';
+
 export const metadata = {
   title: 'Tryout TKA',
   description: 'Aplikasi Tryout TKA Online',
@@ -6,7 +8,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Footer />
+      </body>
     </html>
   );
 }
