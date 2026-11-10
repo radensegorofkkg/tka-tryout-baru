@@ -218,7 +218,14 @@ async function hapus(db, b) {
   const { data: u, error } = await db.from('ujian').select('id, status').eq('id', id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!u) return salah('Ujian tidak ditemukan.', 404);
-  if (u.status !== 'draft') return salah('Hanya ujian berstatus draft yang bisa dihapus.');
+  if (u.status === 'aktif') return salah('Ujian yang sedang aktif tidak bisa dihapus. Tekan Selesai dulu.');
+
+  // Ujian yang sudah dilaksanakan: hapus dulu sesi siswa (jawaban ikut terhapus otomatis), baru ujiannya.
+  // Data ini tidak bisa dikembalikan, jadi hasilnya harus sudah diunduh ke Excel.
+  if (u.status === 'selesai') {
+    const { error: es } = await db.from('sesi_ujian').delete().eq('ujian_id', id);
+    if (es) throw new Error('Gagal menghapus sesi siswa: ' + es.message);
+  }
 
   const { error: eu } = await db.from('ujian').delete().eq('id', id);
   if (eu) throw new Error(eu.message);
