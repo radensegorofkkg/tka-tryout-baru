@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import { buatDb, cekSiswa } from '../../../../lib/siswaAuth';
 import { JENIS_SAH, BATAS_PELANGGARAN, nilaiPelanggaran, tambahCatatan } from '../../../../lib/pelanggaran';
 
@@ -32,7 +33,7 @@ export async function POST(request) {
 
     const { data: sesi, error: es } = await db
       .from('sesi_ujian')
-      .select('id, selesai_at, pelanggaran')
+      .select('id, selesai_at, pelanggaran, curang')
       .eq('ujian_id', u.id)
       .eq('nomor_ujian', siswa.nomor_ujian)
       .maybeSingle();
@@ -47,7 +48,20 @@ export async function POST(request) {
       .eq('id', sesi.id);
     if (ee) throw new Error(ee.message);
 
-    return NextResponse.json({ ok: true, jumlah: hasil.jumlah, curang: hasil.curang, batas: BATAS_PELANGGARAN });
+    // Kunci otomatis: tepat saat pertama kali terdeteksi kecurangan, token login diganti dengan token yang tidak
+    // dikenal perangkat siswa. Status "sudah login" tetap, jadi siswa tidak bisa login lagi sampai admin menekan
+    // Reset Login di Pantau. Jawaban dan waktu ujian tidak berubah.
+    let terkunci = false;
+    if (hasil.curang && !sesi.curang) {
+      const { error: ek } = await db
+        .from('students')
+        .update({ sesi_token: 'TERKUNCI-' + randomBytes(16).toString('hex') })
+        .eq('nomor_ujian', siswa.nomor_ujian);
+      if (ek) throw new Error(ek.message);
+      terkunci = true;
+    }
+
+    return NextResponse.json({ ok: true, jumlah: hasil.jumlah, curang: hasil.curang, batas: BATAS_PELANGGARAN, terkunci });
   } catch (e) {
     return salah('Kejadian belum tercatat.', 500);
   }
