@@ -21,6 +21,16 @@ function statusJawab(soal, j) {
   return jumlah >= total ? 'penuh' : 'sebagian';
 }
 
+const BATAS = 3; // sama dengan BATAS_PELANGGARAN di server (lib/pelanggaran.js)
+const lapisan = (z) => ({
+  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: z, backgroundColor: 'rgba(26,32,44,0.95)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto',
+});
+const kotakPeringatan = {
+  maxWidth: '460px', width: '100%', backgroundColor: '#fff', borderRadius: '12px', padding: '24px',
+  textAlign: 'center', fontFamily: fontDasar,
+};
+
 const format = (d) => {
   const m = Math.floor(d / 60);
   const s = d % 60;
@@ -45,6 +55,14 @@ export default function HalamanUjian() {
   const batasRef = useRef(0);
   const tertunda = useRef(new Map()); // soal_id -> jawaban terbaru yang belum tersimpan
   const sedangKirim = useRef(new Set());
+
+  // --- anti-kecurangan ---
+  const antreanLapor = useRef([]); // kejadian yang belum terkirim: { jenis, detik }
+  const sedangLapor = useRef(false);
+  const jumlahLokal = useRef(0);
+  const [peringatan, setPeringatan] = useState(null); // { jumlah, curang, jenis }
+  const [penuh, setPenuh] = useState(true); // sedang dalam layar penuh?
+  const [layarPenuhGagal, setLayarPenuhGagal] = useState(false);
 
   /* ---------- komunikasi dengan server ---------- */
   const api = async (metode, alamat, body) => {
@@ -130,6 +148,7 @@ export default function HalamanUjian() {
   };
 
   const mulai = async () => {
+    mintaLayarPenuh(); // harus dipanggil langsung dari klik tombol agar diizinkan browser
     setSibuk(true);
     try {
       const { res, json } = await api('POST', '/api/siswa/ujian');
@@ -206,6 +225,58 @@ export default function HalamanUjian() {
     }
   };
 
+  /* ---------- anti-kecurangan ---------- */
+  const elemenPenuh = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  const bisaLayarPenuh = () => {
+    const el = typeof document !== 'undefined' ? document.documentElement : null;
+    return !!(el && (el.requestFullscreen || el.webkitRequestFullscreen));
+  };
+  // Mengembalikan true bila permintaan layar penuh berhasil (atau tidak didukung perangkat, mis. iPhone).
+  const mintaLayarPenuh = async () => {
+    try {
+      const el = document.documentElement;
+      const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!fn) return false;
+      await fn.call(el);
+      setLayarPenuhGagal(false);
+      return true;
+    } catch {
+      setLayarPenuhGagal(true); // jangan memblokir siswa bila perangkat menolak layar penuh
+      return false;
+    }
+  };
+
+  const kirimLapor = async () => {
+    if (sedangLapor.current) return;
+    sedangLapor.current = true;
+    try {
+      while (antreanLapor.current.length > 0) {
+        const item = antreanLapor.current[0];
+        let hasil;
+        try {
+          hasil = await api('POST', '/api/siswa/pelanggaran', item);
+        } catch {
+          return; // koneksi bermasalah: dicoba lagi otomatis
+        }
+        const { res, json } = hasil;
+        if (res.status >= 500) return; // sementara: dicoba lagi
+        antreanLapor.current.shift(); // berhasil, atau ditolak permanen (401/400): jangan diulang
+        if (res.ok && typeof json.jumlah === 'number') {
+          jumlahLokal.current = Math.max(jumlahLokal.current, json.jumlah);
+          setPeringatan((p) => (p ? { ...p, jumlah: Math.max(p.jumlah, json.jumlah), curang: !!json.curang } : p));
+        }
+      }
+    } finally {
+      sedangLapor.current = false;
+    }
+  };
+
+  const lapor = (jenis, detik) => {
+    jumlahLokal.current += 1;
+    antreanLapor.current.push({ jenis, detik: Math.round(detik) });
+    kirimLapor();
+  };
+
   /* ---------- efek ---------- */
   useEffect(() => {
     let n = '';
@@ -245,18 +316,93 @@ export default function HalamanUjian() {
     if (fase !== 'ujian') return;
     const t = setInterval(() => {
       for (const id of [...tertunda.current.keys()]) kirim(id);
+      kirimLapor();
     }, 5000);
     return () => clearInterval(t);
   }, [fase]);
 
-  // Peringatan jika siswa meninggalkan halaman ujian.
+  // Deteksi keluar halaman / pindah aplikasi / kehilangan fokus. Dicatat di server dan ditampilkan sebagai peringatan.
   useEffect(() => {
     if (fase !== 'ujian') return;
-    const aksi = () => {
-      if (document.hidden) alert('Peringatan! Anda terdeteksi keluar dari halaman ujian.');
+    let hiddenAt = null;
+    let timerBlur = null;
+    let sudahLaporBlur = false;
+
+    const saatTersembunyi = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+        if (timerBlur) { clearTimeout(timerBlur); timerBlur = null; }
+        sudahLaporBlur = true; // kejadian ini dihitung sebagai keluar halaman, bukan kehilangan fokus
+      } else if (hiddenAt) {
+        const lama = (Date.now() - hiddenAt) / 1000;
+        hiddenAt = null;
+        sudahLaporBlur = false;
+        if (lama >= 2) {
+          lapor('keluar_halaman', lama);
+          setPeringatan({ jenis: 'keluar_halaman', jumlah: jumlahLokal.current, curang: false });
+        }
+      }
     };
-    document.addEventListener('visibilitychange', aksi);
-    return () => document.removeEventListener('visibilitychange', aksi);
+    const saatBlur = () => {
+      if (document.hidden || timerBlur) return;
+      timerBlur = setTimeout(() => {
+        timerBlur = null;
+        if (document.hidden || document.hasFocus() || sudahLaporBlur) return;
+        sudahLaporBlur = true;
+        lapor('kehilangan_fokus', 3);
+        setPeringatan({ jenis: 'kehilangan_fokus', jumlah: jumlahLokal.current, curang: false });
+      }, 3000);
+    };
+    const saatFokus = () => {
+      if (timerBlur) { clearTimeout(timerBlur); timerBlur = null; }
+      if (!document.hidden) sudahLaporBlur = false;
+    };
+
+    document.addEventListener('visibilitychange', saatTersembunyi);
+    window.addEventListener('blur', saatBlur);
+    window.addEventListener('focus', saatFokus);
+    return () => {
+      document.removeEventListener('visibilitychange', saatTersembunyi);
+      window.removeEventListener('blur', saatBlur);
+      window.removeEventListener('focus', saatFokus);
+      if (timerBlur) clearTimeout(timerBlur);
+    };
+  }, [fase]);
+
+  // Layar penuh: bila keluar dari layar penuh lebih dari 1 menit, dicatat sebagai pelanggaran.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    const perbarui = () => setPenuh(!!elemenPenuh());
+    perbarui();
+    document.addEventListener('fullscreenchange', perbarui);
+    document.addEventListener('webkitfullscreenchange', perbarui);
+    let sejak = null;
+    let sudahLapor = false;
+    const t = setInterval(() => {
+      const wajib = bisaLayarPenuh() && !layarPenuhGagal;
+      if (!wajib || elemenPenuh()) { sejak = null; sudahLapor = false; return; }
+      if (sejak === null) sejak = Date.now();
+      const lama = (Date.now() - sejak) / 1000;
+      if (lama >= 60 && !sudahLapor) {
+        sudahLapor = true;
+        lapor('tidak_layar_penuh', lama);
+        setPeringatan({ jenis: 'tidak_layar_penuh', jumlah: jumlahLokal.current, curang: false });
+      }
+    }, 1000);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('fullscreenchange', perbarui);
+      document.removeEventListener('webkitfullscreenchange', perbarui);
+    };
+  }, [fase, layarPenuhGagal]);
+
+  // Menghalangi salin, tempel, klik kanan, dan seret selama ujian.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    const cegah = (e) => e.preventDefault();
+    const acara = ['copy', 'cut', 'paste', 'contextmenu', 'dragstart'];
+    acara.forEach((a) => document.addEventListener(a, cegah));
+    return () => acara.forEach((a) => document.removeEventListener(a, cegah));
   }, [fase]);
 
   /* ---------- tampilan ---------- */
@@ -348,7 +494,43 @@ export default function HalamanUjian() {
   });
 
   return (
-    <main style={{ ...kartu, margin: '16px auto' }}>
+    <main style={{ ...kartu, margin: '16px auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
+      {bisaLayarPenuh() && !penuh && !layarPenuhGagal && (
+        <div style={lapisan(1002)}>
+          <div style={kotakPeringatan}>
+            <div style={{ fontSize: '40px' }}>🖥️</div>
+            <h2 style={{ margin: '8px 0' }}>Ujian harus dalam layar penuh</h2>
+            <p style={{ lineHeight: 1.6, color: '#4a5568' }}>
+              Anda keluar dari layar penuh. Waktu ujian tetap berjalan. Keluar dari layar penuh lebih dari 1 menit
+              akan dicatat sebagai pelanggaran dan dilaporkan ke pengawas.
+            </p>
+            <button onClick={mintaLayarPenuh} style={tombol('#3182ce')}>Masuk Layar Penuh</button>
+          </div>
+        </div>
+      )}
+      {peringatan && (
+        <div style={lapisan(1001)}>
+          <div style={kotakPeringatan}>
+            <div style={{ fontSize: '40px' }}>⚠️</div>
+            <h2 style={{ margin: '8px 0', color: '#c53030' }}>Peringatan</h2>
+            <p style={{ lineHeight: 1.6 }}>
+              {peringatan.jenis === 'tidak_layar_penuh'
+                ? 'Anda tidak berada dalam layar penuh lebih dari 1 menit.'
+                : peringatan.jenis === 'kehilangan_fokus'
+                  ? 'Anda berpindah ke jendela atau aplikasi lain.'
+                  : 'Anda terdeteksi keluar dari halaman ujian.'}
+              {' '}Kejadian ini tercatat dan dapat dilihat pengawas.
+            </p>
+            <p style={{ fontWeight: 'bold' }}>Pelanggaran tercatat: {peringatan.jumlah} dari batas {BATAS}</p>
+            <p style={{ lineHeight: 1.6, color: peringatan.curang || peringatan.jumlah >= BATAS ? '#c53030' : '#4a5568', fontSize: '14px' }}>
+              {peringatan.curang || peringatan.jumlah >= BATAS
+                ? 'Ujian Anda sudah ditandai "terdeteksi kecurangan" dan dilaporkan ke pengawas.'
+                : `Jika mencapai ${BATAS} kali, ujian Anda ditandai "terdeteksi kecurangan".`}
+            </p>
+            <button onClick={() => setPeringatan(null)} style={tombol('#3182ce')}>Saya mengerti, lanjutkan ujian</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', marginBottom: '16px' }}>
         <div style={{ fontSize: '14px' }}>
           <b>{namaUjian}</b><br />
