@@ -64,7 +64,7 @@ export async function GET(request) {
     const sesi = await ambilSemua(() =>
       db
         .from('sesi_ujian')
-        .select('id, nomor_ujian, mulai_at, selesai_at, tambahan_menit, skor')
+        .select('id, nomor_ujian, mulai_at, selesai_at, tambahan_menit, skor, pelanggaran, curang, alasan_curang')
         .eq('ujian_id', ujianId)
         .order('id')
     );
@@ -95,6 +95,9 @@ export async function GET(request) {
         tambahan_menit: se ? se.tambahan_menit || 0 : 0,
         dijawab: se ? petaJawab.get(se.id) || 0 : 0,
         skor: se && se.selesai_at ? se.skor : null,
+        jumlah_pelanggaran: se && Array.isArray(se.pelanggaran) ? se.pelanggaran.length : 0,
+        curang: se ? !!se.curang : false,
+        alasan_curang: se ? se.alasan_curang || null : null,
       };
     });
 
@@ -108,6 +111,7 @@ export async function GET(request) {
         mengerjakan: hitung('mengerjakan'),
         waktu_habis: hitung('waktu_habis'),
         selesai: hitung('selesai'),
+        curang: daftar.filter((d) => d.curang).length,
       },
       siswa: daftar,
     });
