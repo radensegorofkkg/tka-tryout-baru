@@ -178,7 +178,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
   const kata = cari.trim().toLowerCase();
   const tampil = data.siswa.filter(
     (s) =>
-      (saring === 'semua' || s.status === saring) &&
+      (saring === 'semua' || (saring === 'curang' ? s.curang : s.status === saring)) &&
       (!kata || s.nama_lengkap.toLowerCase().includes(kata) || s.nomor_ujian.toLowerCase().includes(kata) || (s.sekolah || '').toLowerCase().includes(kata))
   );
   const r = data.ringkas;
@@ -221,6 +221,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
         {chip('Mengerjakan', r.mengerjakan, 'mengerjakan')}
         {chip('Waktu habis', r.waktu_habis, 'waktu_habis')}
         {chip('Selesai', r.selesai, 'selesai')}
+        {chip('Terdeteksi kecurangan', r.curang || 0, 'curang')}
       </div>
 
       {data.ujian.status === 'selesai' && r.mengerjakan + r.waktu_habis > 0 && (
@@ -256,12 +257,13 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
               <th style={sel}>Dijawab</th>
               <th style={sel}>Sisa waktu</th>
               <th style={sel}>Skor</th>
+              <th style={sel}>Pelanggaran</th>
               <th style={sel}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {tampil.length === 0 && (
-              <tr><td colSpan="8" style={{ ...sel, color: '#718096' }}>Tidak ada siswa yang cocok.</td></tr>
+              <tr><td colSpan="9" style={{ ...sel, color: '#718096' }}>Tidak ada siswa yang cocok.</td></tr>
             )}
             {tampil.map((s) => {
               const l = STATUS[s.status];
@@ -277,6 +279,17 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
                   <td style={sel}>{s.sesi_id ? `${s.dijawab} / ${data.ujian.jumlah_soal}` : '-'}</td>
                   <td style={sel}>{s.sisa_detik !== null ? format(s.sisa_detik) : '-'}{s.tambahan_menit > 0 ? ` (+${s.tambahan_menit} mnt)` : ''}</td>
                   <td style={sel}>{s.skor !== null && s.skor !== undefined ? `${s.skor} / ${data.ujian.maks}` : '-'}</td>
+                  <td style={sel}>
+                    {s.jumlah_pelanggaran > 0 ? (
+                      <span
+                        title={s.alasan_curang ? `Terdeteksi kecurangan karena: ${s.alasan_curang}` : 'Belum mencapai batas kecurangan'}
+                        style={{ backgroundColor: s.curang ? '#fed7d7' : '#fefcbf', color: s.curang ? '#9b2c2c' : '#744210', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap', cursor: 'help' }}
+                      >
+                        {s.curang ? '⚠ Terdeteksi' : ''} {s.jumlah_pelanggaran}x
+                      </span>
+                    ) : '-'}
+                    {s.curang && s.alasan_curang && <div style={{ fontSize: '11px', color: '#9b2c2c', marginTop: '2px', maxWidth: '220px' }}>{s.alasan_curang}</div>}
+                  </td>
                   <td style={{ ...sel, whiteSpace: 'nowrap' }}>
                     {s.is_logged_in && <button onClick={() => resetLogin(s)} disabled={sibuk} style={mini('#ed8936', sibuk)}>Reset Login</button>}
                     {belumKumpul && <button onClick={() => tambahWaktu(s)} disabled={sibuk} style={mini('#3182ce', sibuk)}>Tambah Waktu</button>}
