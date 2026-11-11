@@ -59,7 +59,7 @@ export async function GET(request) {
 
     const siswa = await ambilSemua(() => db.from('students').select('nomor_ujian, nama_lengkap').order('nomor_ujian'));
     const sesi = await ambilSemua(() =>
-      db.from('sesi_ujian').select('id, nomor_ujian, mulai_at, selesai_at, skor').eq('ujian_id', ujianId).order('id')
+      db.from('sesi_ujian').select('id, nomor_ujian, mulai_at, selesai_at, skor, pelanggaran, curang, alasan_curang').eq('ujian_id', ujianId).order('id')
     );
     const ringkasan = await ambilSemua(() => db.rpc('ringkasan_sesi', { p_ujian_id: ujianId }));
     const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
@@ -91,9 +91,12 @@ export async function GET(request) {
       { header: 'Nilai (0-100)', key: 'nilai', width: 12 },
       { header: 'Mulai (WIB)', key: 'mulai', width: 22 },
       { header: 'Selesai (WIB)', key: 'selesai', width: 22 },
+      { header: 'Pelanggaran (kali)', key: 'pelanggaran', width: 14 },
+      { header: 'Terdeteksi Kecurangan', key: 'curang', width: 14 },
+      { header: 'Keterangan', key: 'keterangan', width: 70 },
     ];
     hasil.forEach((h, i) => {
-      ws1.addRow({
+      const baris = ws1.addRow({
         no: i + 1,
         nomor: h.nomor_ujian,
         nama: h.nama,
@@ -106,10 +109,18 @@ export async function GET(request) {
         nilai: h.nilai,
         mulai: waktuWib(h.mulai_at),
         selesai: waktuWib(h.selesai_at),
+        pelanggaran: h.pelanggaran || null,
+        curang: h.curang ? 'Ya' : '-',
+        keterangan: h.keterangan,
       });
+      if (h.curang) {
+        baris.eachCell((c) => {
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFED7D7' } };
+        });
+      }
     });
     gayaJudul(ws1);
-    ws1.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } };
+    ws1.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 15 } };
 
     // Lembar 2: rekap per sekolah
     const ws2 = wb.addWorksheet('Rekap Sekolah');
@@ -120,6 +131,7 @@ export async function GET(request) {
       { header: 'Selesai', key: 'selesai', width: 9 },
       { header: 'Belum selesai', key: 'belum', width: 13 },
       { header: 'Tidak ikut', key: 'tidak', width: 11 },
+      { header: 'Terdeteksi curang', key: 'curang', width: 16 },
       { header: 'Rata-rata nilai', key: 'rata', width: 14 },
       { header: 'Nilai tertinggi', key: 'tertinggi', width: 14 },
       { header: 'Nilai terendah', key: 'terendah', width: 14 },
@@ -133,6 +145,7 @@ export async function GET(request) {
       selesai: jml('selesai'),
       belum: jml('belum'),
       tidak: jml('tidak'),
+      curang: jml('curang'),
       rata: semuaNilai.length ? Math.round((semuaNilai.reduce((a, b) => a + b, 0) / semuaNilai.length) * 10) / 10 : null,
       tertinggi: semuaNilai.length ? Math.max(...semuaNilai) : null,
       terendah: semuaNilai.length ? Math.min(...semuaNilai) : null,
@@ -150,6 +163,8 @@ export async function GET(request) {
       'Nilai (0-100) = skor dibagi skor maksimal, dikali 100.',
       'Skor dan nilai hanya terisi untuk siswa berstatus Selesai.',
       'Status "Belum selesai" = sudah mulai tetapi belum dikumpulkan/dinilai. "Tidak ikut" = terdaftar tetapi belum pernah memulai ujian ini.',
+      'Kolom "Terdeteksi Kecurangan" = Ya bila siswa keluar dari halaman ujian (pindah tab/aplikasi) atau berpindah jendela sebanyak 3 kali atau lebih, atau tidak dalam layar penuh lebih dari 1 menit. Baris ditandai merah; alasannya ada di kolom Keterangan.',
+      'Deteksi dilakukan otomatis oleh aplikasi sebagai petunjuk, bukan bukti mutlak. Mohon tinjau bersama pengawas ruang sebelum mengambil keputusan.',
       'Rata-rata, nilai tertinggi, dan terendah di Rekap Sekolah dihitung hanya dari siswa yang Selesai.',
     ].forEach((t) => ws3.addRow([t]));
 
