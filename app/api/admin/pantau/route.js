@@ -57,7 +57,7 @@ export async function GET(request) {
     const maks = bs.reduce((a, b) => a + (Number(b.soal?.skor) || 0), 0);
 
     const siswa = await ambilSemua(() =>
-      db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in').order('nomor_ujian')
+      db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in, sesi_token').order('nomor_ujian')
     );
     const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
     const namaSekolah = new Map((dataSekolah || []).map((x) => [x.npsn, x.nama]));
@@ -96,6 +96,7 @@ export async function GET(request) {
         dijawab: se ? petaJawab.get(se.id) || 0 : 0,
         skor: se && se.selesai_at ? se.skor : null,
         jumlah_pelanggaran: se && Array.isArray(se.pelanggaran) ? se.pelanggaran.length : 0,
+        terkunci: !!s.is_logged_in && typeof s.sesi_token === 'string' && s.sesi_token.startsWith('TERKUNCI-'),
         curang: se ? !!se.curang : false,
         alasan_curang: se ? se.alasan_curang || null : null,
       };
