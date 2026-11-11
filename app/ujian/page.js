@@ -63,6 +63,7 @@ export default function HalamanUjian() {
   const [peringatan, setPeringatan] = useState(null); // { jumlah, curang, jenis }
   const [penuh, setPenuh] = useState(true); // sedang dalam layar penuh?
   const [layarPenuhGagal, setLayarPenuhGagal] = useState(false);
+  const terkunciRef = useRef(false);
 
   /* ---------- komunikasi dengan server ---------- */
   const api = async (metode, alamat, body) => {
@@ -81,6 +82,7 @@ export default function HalamanUjian() {
   };
 
   const keluarLogin = () => {
+    if (terkunciRef.current) return; // layar terkunci tetap ditampilkan
     try {
       localStorage.removeItem('peserta_nama');
       localStorage.removeItem('peserta_nomor');
@@ -246,6 +248,22 @@ export default function HalamanUjian() {
     }
   };
 
+  const kunciUjian = () => {
+    terkunciRef.current = true;
+    antreanLapor.current = [];
+    tertunda.current.clear();
+    try {
+      localStorage.removeItem('peserta_nama');
+      localStorage.removeItem('peserta_nomor');
+      localStorage.removeItem('peserta_token');
+    } catch { /* abaikan */ }
+    try {
+      if (elemenPenuh()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } catch { /* abaikan */ }
+    setPeringatan(null);
+    setFase('terkunci');
+  };
+
   const kirimLapor = async () => {
     if (sedangLapor.current) return;
     sedangLapor.current = true;
@@ -261,6 +279,7 @@ export default function HalamanUjian() {
         const { res, json } = hasil;
         if (res.status >= 500) return; // sementara: dicoba lagi
         antreanLapor.current.shift(); // berhasil, atau ditolak permanen (401/400): jangan diulang
+        if (res.ok && json.terkunci) { kunciUjian(); return; }
         if (res.ok && typeof json.jumlah === 'number') {
           jumlahLokal.current = Math.max(jumlahLokal.current, json.jumlah);
           setPeringatan((p) => (p ? { ...p, jumlah: Math.max(p.jumlah, json.jumlah), curang: !!json.curang } : p));
@@ -408,6 +427,23 @@ export default function HalamanUjian() {
   /* ---------- tampilan ---------- */
   if (fase === 'memuat') {
     return <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: fontDasar }}>Memuat…</div>;
+  }
+
+  if (fase === 'terkunci') {
+    return (
+      <main style={{ ...kartu, textAlign: 'center' }}>
+        <div style={{ fontSize: '48px' }}>🔒</div>
+        <h2 style={{ color: '#c53030' }}>Ujian Terkunci</h2>
+        <p style={{ lineHeight: 1.6 }}>
+          Anda terdeteksi melakukan pelanggaran sebanyak {BATAS} kali (atau tidak dalam layar penuh lebih dari 1 menit).
+          Ujian dikunci otomatis dan dilaporkan ke pengawas.
+        </p>
+        <p style={{ lineHeight: 1.6, color: '#4a5568' }}>
+          Angkat tangan dan hubungi pengawas. Jawaban yang sudah tersimpan tidak hilang. Waktu ujian tetap berjalan sampai
+          pengawas membuka kembali akun Anda.
+        </p>
+      </main>
+    );
   }
 
   if (fase === 'galat') {
