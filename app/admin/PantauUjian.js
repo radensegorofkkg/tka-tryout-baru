@@ -288,6 +288,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
                         {s.curang ? '⚠ Terdeteksi' : ''} {s.jumlah_pelanggaran}x
                       </span>
                     ) : '-'}
+                    {s.terkunci && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#c53030', marginTop: '2px' }}>🔒 Terkunci otomatis — klik Reset Login agar bisa masuk lagi</div>}
                     {s.curang && s.alasan_curang && <div style={{ fontSize: '11px', color: '#9b2c2c', marginTop: '2px', maxWidth: '220px' }}>{s.alasan_curang}</div>}
                   </td>
                   <td style={{ ...sel, whiteSpace: 'nowrap' }}>
