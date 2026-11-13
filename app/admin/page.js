@@ -4,12 +4,14 @@ import ImporSoal from './ImporSoal';
 import MenuUjian from './MenuUjian';
 import DataSiswa from './DataSiswa';
 import BankSoal from './BankSoal';
+import AdminSekolah from './AdminSekolah';
 
 const TAB = [
   { id: 'siswa', nama: '👥 Database Siswa' },
   { id: 'soal', nama: '📝 Input & Import Soal' },
   { id: 'bank', nama: '🗂️ Bank Soal' },
   { id: 'ujian', nama: '🗓️ Ujian' },
+  { id: 'sekolah', nama: '🏫 Admin Sekolah' },
 ];
 
 export default function AdminDashboard() {
@@ -144,6 +146,7 @@ export default function AdminDashboard() {
         {activeTab === 'siswa' && <DataSiswa sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
         {activeTab === 'soal' && <ImporSoal sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
         {activeTab === 'bank' && <BankSoal sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+        {activeTab === 'sekolah' && <AdminSekolah sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
         {activeTab === 'ujian' && <MenuUjian sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
 
       </div>
