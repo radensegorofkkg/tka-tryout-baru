@@ -1,227 +1,155 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cekAdmin } from '../../../../lib/adminAuth';
+'use client';
+import { useState, useEffect } from 'react';
+import ImporSoal from './ImporSoal';
+import MenuUjian from './MenuUjian';
+import DataSiswa from './DataSiswa';
+import BankSoal from './BankSoal';
+import AdminSekolah from './AdminSekolah';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+const TAB = [
+  { id: 'siswa', nama: '👥 Database Siswa' },
+  { id: 'soal', nama: '📝 Input & Import Soal' },
+  { id: 'bank', nama: '🗂️ Bank Soal' },
+  { id: 'ujian', nama: '🗓️ Ujian' },
+  { id: 'sekolah', nama: '🏫 Admin Sekolah' },
+];
 
-const salah = (pesan, status = 400) => NextResponse.json({ pesan }, { status });
-const tolak = () => salah('Kata sandi admin salah.', 401);
+export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('siswa');
 
-function buatDb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const kunci = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !kunci) return null;
-  return createClient(url, kunci, { auth: { persistSession: false, autoRefreshToken: false } });
-}
+  // Gerbang kata sandi admin
+  const [sandi, setSandi] = useState('');
+  const [terbuka, setTerbuka] = useState(false);
+  const [memeriksaSandi, setMemeriksaSandi] = useState(true);
+  const [inputSandi, setInputSandi] = useState('');
+  const [galatMasuk, setGalatMasuk] = useState('');
 
-// Mengambil semua baris (Supabase membatasi 1000 baris per permintaan).
-async function ambilSemua(buatQuery) {
-  const hasil = [];
-  for (let dari = 0; ; dari += 1000) {
-    const { data, error } = await buatQuery().range(dari, dari + 999);
-    if (error) throw new Error(error.message);
-    hasil.push(...data);
-    if (data.length < 1000) break;
-  }
-  return hasil;
-}
-
-function sisaDetik(sesi, ujian) {
-  const menit = ujian.durasi_menit + (sesi.tambahan_menit || 0);
-  const batas = new Date(sesi.mulai_at).getTime() + menit * 60 * 1000;
-  return Math.max(0, Math.floor((batas - Date.now()) / 1000));
-}
-
-/* ---------- GET ?ujian_id=N : daftar siswa beserta statusnya ---------- */
-export async function GET(request) {
-  if (!cekAdmin(request)) return tolak();
-  const db = buatDb();
-  if (!db) return salah('Konfigurasi server belum lengkap (SUPABASE_SERVICE_ROLE_KEY).', 500);
-
-  const ujianId = Number(new URL(request.url).searchParams.get('ujian_id'));
-  if (!Number.isInteger(ujianId)) return salah('Permintaan tidak valid.');
-
-  try {
-    const { data: u, error: eu } = await db
-      .from('ujian')
-      .select('id, nama, durasi_menit, status, peringkat_terbuka')
-      .eq('id', ujianId)
-      .maybeSingle();
-    if (eu) throw new Error(eu.message);
-    if (!u) return salah('Ujian tidak ditemukan.', 404);
-
-    const { data: bs, error: eb } = await db.from('ujian_soal').select('soal(skor)').eq('ujian_id', ujianId);
-    if (eb) throw new Error(eb.message);
-    const jumlahSoal = bs.length;
-    const maks = bs.reduce((a, b) => a + (Number(b.soal?.skor) || 0), 0);
-
-    const siswa = await ambilSemua(() =>
-      db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in, sesi_token').order('nomor_ujian')
-    );
-    const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
-    const namaSekolah = new Map((dataSekolah || []).map((x) => [x.npsn, x.nama]));
-    const sesi = await ambilSemua(() =>
-      db
-        .from('sesi_ujian')
-        .select('id, nomor_ujian, mulai_at, selesai_at, tambahan_menit, skor, pelanggaran, curang, alasan_curang')
-        .eq('ujian_id', ujianId)
-        .order('id')
-    );
-    const ringkasan = await ambilSemua(() => db.rpc('ringkasan_sesi', { p_ujian_id: ujianId }));
-
-    const petaSesi = new Map(sesi.map((s) => [s.nomor_ujian, s]));
-    const petaJawab = new Map(ringkasan.map((r) => [r.sesi_id, Number(r.jumlah_jawaban)]));
-
-    const daftar = siswa.map((s) => {
-      const se = petaSesi.get(s.nomor_ujian);
-      let status = s.is_logged_in ? 'login' : 'belum_login';
-      let sisa = null;
-      if (se) {
-        if (se.selesai_at) status = 'selesai';
-        else {
-          sisa = sisaDetik(se, u);
-          status = sisa > 0 ? 'mengerjakan' : 'waktu_habis';
-        }
-      }
-      return {
-        nomor_ujian: s.nomor_ujian,
-        nama_lengkap: s.nama_lengkap,
-        sekolah: namaSekolah.get(String(s.nomor_ujian).split('-')[0]) || null,
-        is_logged_in: s.is_logged_in,
-        status,
-        sesi_id: se ? se.id : null,
-        sisa_detik: sisa,
-        tambahan_menit: se ? se.tambahan_menit || 0 : 0,
-        dijawab: se ? petaJawab.get(se.id) || 0 : 0,
-        skor: se && se.selesai_at ? se.skor : null,
-        jumlah_pelanggaran: se && Array.isArray(se.pelanggaran) ? se.pelanggaran.length : 0,
-        terkunci: !!s.is_logged_in && typeof s.sesi_token === 'string' && s.sesi_token.startsWith('TERKUNCI-'),
-        curang: se ? !!se.curang : false,
-        alasan_curang: se ? se.alasan_curang || null : null,
-      };
-    });
-
-    const hitung = (st) => daftar.filter((d) => d.status === st).length;
-    return NextResponse.json({
-      ujian: { ...u, jumlah_soal: jumlahSoal, maks },
-      ringkas: {
-        total: daftar.length,
-        belum_login: hitung('belum_login'),
-        login: hitung('login'),
-        mengerjakan: hitung('mengerjakan'),
-        waktu_habis: hitung('waktu_habis'),
-        selesai: hitung('selesai'),
-        curang: daftar.filter((d) => d.curang).length,
-      },
-      siswa: daftar,
-    });
-  } catch (e) {
-    return salah('Gagal membaca data pantauan: ' + e.message, 500);
-  }
-}
-
-/* ---------- POST: reset login, buka ulang, tambah waktu ---------- */
-async function resetLogin(db, b) {
-  const nomor = String(b.nomor_ujian ?? '').trim();
-  if (!nomor) return salah('Permintaan tidak valid.');
-  const { data, error } = await db
-    .from('students')
-    .update({ is_logged_in: false, sesi_token: null })
-    .eq('nomor_ujian', nomor)
-    .select('nomor_ujian');
-  if (error) throw new Error(error.message);
-  if (!data || data.length === 0) return salah('Siswa tidak ditemukan.', 404);
-  return NextResponse.json({ ok: true });
-}
-
-async function ambilSesiDanUjian(db, sesiId) {
-  const { data: se, error } = await db
-    .from('sesi_ujian')
-    .select('id, ujian_id, nomor_ujian, mulai_at, selesai_at, tambahan_menit')
-    .eq('id', sesiId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!se) return {};
-  const { data: u, error: eu } = await db.from('ujian').select('id, durasi_menit, status').eq('id', se.ujian_id).maybeSingle();
-  if (eu) throw new Error(eu.message);
-  return { se, u };
-}
-
-async function bukaUlang(db, b) {
-  const sesiId = Number(b.sesi_id);
-  const menit = Number(b.menit);
-  if (!Number.isInteger(sesiId)) return salah('Permintaan tidak valid.');
-  if (!Number.isInteger(menit) || menit < 1 || menit > 180) return salah('Waktu harus berupa angka bulat 1 sampai 180 menit.');
-
-  const { se, u } = await ambilSesiDanUjian(db, sesiId);
-  if (!se || !u) return salah('Sesi tidak ditemukan.', 404);
-  if (!se.selesai_at) return salah('Sesi ini belum dikumpulkan, jadi tidak perlu dibuka ulang.');
-
-  // Waktu tersisa dijadikan paling sedikit "menit" menit. Jika sisa waktunya masih lebih banyak, dibiarkan.
-  const sisa = sisaDetik({ ...se, tambahan_menit: se.tambahan_menit || 0 }, u);
-  let tambahan = se.tambahan_menit || 0;
-  if (sisa < menit * 60) tambahan += Math.ceil((menit * 60 - sisa) / 60);
-
-  const { error: e1 } = await db
-    .from('sesi_ujian')
-    .update({ selesai_at: null, skor: null, tambahan_menit: tambahan })
-    .eq('id', sesiId);
-  if (e1) throw new Error(e1.message);
-
-  // Siswa harus login ulang (di depan pengawas), sehingga kartu masuk lama tidak berlaku lagi.
-  const { error: e2 } = await db
-    .from('students')
-    .update({ is_logged_in: false, sesi_token: null })
-    .eq('nomor_ujian', se.nomor_ujian);
-  if (e2) throw new Error(e2.message);
-
-  return NextResponse.json({
-    ok: true,
-    ujian_aktif: u.status === 'aktif',
-    catatan: u.status === 'aktif' ? '' : 'Ujian sedang tidak aktif. Aktifkan ujian agar siswa bisa melanjutkan.',
-  });
-}
-
-async function tambahWaktu(db, b) {
-  const sesiId = Number(b.sesi_id);
-  const menit = Number(b.menit);
-  if (!Number.isInteger(sesiId)) return salah('Permintaan tidak valid.');
-  if (!Number.isInteger(menit) || menit < 1 || menit > 180) return salah('Tambahan waktu harus berupa angka bulat 1 sampai 180 menit.');
-
-  const { se } = await ambilSesiDanUjian(db, sesiId);
-  if (!se) return salah('Sesi tidak ditemukan.', 404);
-  if (se.selesai_at) return salah('Sesi ini sudah dikumpulkan. Gunakan Buka Ulang.');
-
-  const { error } = await db
-    .from('sesi_ujian')
-    .update({ tambahan_menit: (se.tambahan_menit || 0) + menit })
-    .eq('id', sesiId)
-    .is('selesai_at', null);
-  if (error) throw new Error(error.message);
-  return NextResponse.json({ ok: true });
-}
-
-export async function POST(request) {
-  if (!cekAdmin(request)) return tolak();
-  const db = buatDb();
-  if (!db) return salah('Konfigurasi server belum lengkap (SUPABASE_SERVICE_ROLE_KEY).', 500);
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return salah('Permintaan tidak valid.');
-  }
-
-  try {
-    switch (body.aksi) {
-      case 'reset_login': return await resetLogin(db, body);
-      case 'buka_ulang': return await bukaUlang(db, body);
-      case 'tambah_waktu': return await tambahWaktu(db, body);
-      default: return salah('Aksi tidak dikenal.');
+  const verifikasiSandi = async (s) => {
+    try {
+      const res = await fetch('/api/admin/cek', { method: 'POST', headers: { 'x-admin-password': s } });
+      return res.ok;
+    } catch {
+      return false;
     }
-  } catch (e) {
-    return salah('Terjadi kesalahan di server: ' + e.message, 500);
+  };
+
+  const keluarAdmin = (pesan) => {
+    try { sessionStorage.removeItem('admin_sandi'); } catch {}
+    setSandi('');
+    setTerbuka(false);
+    setInputSandi('');
+    setGalatMasuk(pesan || '');
+  };
+
+  useEffect(() => {
+    let tersimpan = '';
+    try { tersimpan = sessionStorage.getItem('admin_sandi') || ''; } catch {}
+    if (!tersimpan) { setMemeriksaSandi(false); return; }
+    verifikasiSandi(tersimpan).then((ok) => {
+      if (ok) { setSandi(tersimpan); setTerbuka(true); }
+      else { try { sessionStorage.removeItem('admin_sandi'); } catch {} }
+      setMemeriksaSandi(false);
+    });
+  }, []);
+
+  const handleMasuk = async (e) => {
+    e.preventDefault();
+    setGalatMasuk('');
+    setMemeriksaSandi(true);
+    const ok = await verifikasiSandi(inputSandi);
+    setMemeriksaSandi(false);
+    if (ok) {
+      try { sessionStorage.setItem('admin_sandi', inputSandi); } catch {}
+      setSandi(inputSandi);
+      setTerbuka(true);
+      setInputSandi('');
+    } else {
+      setGalatMasuk('Kata sandi salah.');
+    }
+  };
+
+  // Link untuk siswa. Memakai NEXT_PUBLIC_URL_TRYOUT (alamat produksi) bila diisi di Vercel;
+  // jika tidak, memakai alamat yang sedang dibuka.
+  const copyLinkUjian = () => {
+    const link = (process.env.NEXT_PUBLIC_URL_TRYOUT || window.location.origin).replace(/\/+$/, '');
+    try { navigator.clipboard.writeText(link); } catch {}
+    alert(`Link Tryout berhasil disalin:\n${link}\n\nPastikan link ini bisa dibuka dari HP tanpa diminta login Vercel.`);
+  };
+
+  const keluarSesi = 'Sesi berakhir atau kata sandi berubah. Silakan masuk lagi.';
+
+  if (!terbuka) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4f6f9', fontFamily: 'sans-serif', padding: '16px' }}>
+        <form onSubmit={handleMasuk} style={{ width: '100%', maxWidth: '380px', backgroundColor: '#fff', padding: '28px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          <h1 style={{ margin: '0 0 4px', fontSize: '22px', color: '#1a202c' }}>Masuk Admin</h1>
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#718096' }}>Dashboard Admin Tryout TKA</p>
+          <input
+            type="password"
+            value={inputSandi}
+            onChange={(e) => setInputSandi(e.target.value)}
+            placeholder="Kata sandi admin"
+            autoFocus
+            required
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '14px' }}
+          />
+          {galatMasuk && <div style={{ color: '#c53030', fontSize: '13px', marginTop: '8px' }}>{galatMasuk}</div>}
+          <button type="submit" disabled={memeriksaSandi} style={{ width: '100%', marginTop: '14px', backgroundColor: memeriksaSandi ? '#a0aec0' : '#3182ce', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: memeriksaSandi ? 'not-allowed' : 'pointer' }}>
+            {memeriksaSandi ? 'Memeriksa…' : 'Masuk'}
+          </button>
+        </form>
+      </div>
+    );
   }
+
+  return (
+    <div style={{ fontFamily: 'sans-serif', backgroundColor: '#f4f6f9', minHeight: '100vh', padding: '24px' }}>
+      <div style={{ maxWidth: '1000px', margin: '0 auto', backgroundColor: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+
+        {/* Header Dashboard */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '24px', borderBottom: '2px solid #edf2f7', paddingBottom: '16px' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '24px', color: '#1a202c' }}>Dashboard Admin Tryout TKA</h1>
+            <p style={{ margin: '4px 0 0', color: '#718096', fontSize: '14px' }}>Kelola data siswa, soal, dan pelaksanaan ujian tanpa perlu buka GitHub/Vercel</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={copyLinkUjian} style={{ backgroundColor: '#319795', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              📋 Salin Link Tryout Siswa
+            </button>
+            <button onClick={() => keluarAdmin('')} style={{ backgroundColor: '#e2e8f0', color: '#4a5568', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Keluar
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          {TAB.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                backgroundColor: activeTab === t.id ? '#3182ce' : '#e2e8f0',
+                color: activeTab === t.id ? '#fff' : '#4a5568',
+              }}
+            >
+              {t.nama}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'siswa' && <DataSiswa sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+        {activeTab === 'soal' && <ImporSoal sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+        {activeTab === 'bank' && <BankSoal sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+        {activeTab === 'sekolah' && <AdminSekolah sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+        {activeTab === 'ujian' && <MenuUjian sandi={sandi} onKeluar={() => keluarAdmin(keluarSesi)} />}
+
+      </div>
+    </div>
+  );
 }
