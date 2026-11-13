@@ -43,12 +43,23 @@ export default function LoginPage() {
     <div style={{
       display: 'flex',
       minHeight: '100vh',
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: '#f9fafb',
       fontFamily: 'sans-serif',
       padding: '16px'
     }}>
+      <div style={{
+        fontSize: '22px',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        color: '#1a365d',
+        marginBottom: '16px',
+        lineHeight: 1.3
+      }}>
+        Tryout TKA Kec. Banyuates
+      </div>
       <div style={{
         width: '100%',
         maxWidth: '420px',
