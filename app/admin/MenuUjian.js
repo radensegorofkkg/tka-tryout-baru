@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import PantauUjian from './PantauUjian';
+import PesertaUjian from './PesertaUjian';
 
 const kotak = { backgroundColor: '#f7fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' };
 const tombol = (warna, mati) => ({
@@ -20,6 +21,7 @@ export default function MenuUjian({ sandi, onKeluar }) {
   const [info, setInfo] = useState('');
   const [sibuk, setSibuk] = useState(false);
   const [pantauId, setPantauId] = useState(null);
+  const [pesertaId, setPesertaId] = useState(null);
 
   const [nama, setNama] = useState('');
   const [mapelId, setMapelId] = useState('');
@@ -212,6 +214,9 @@ export default function MenuUjian({ sandi, onKeluar }) {
               <button onClick={() => setPantauId(pantauId === u.id ? null : u.id)} style={tombol('#2b6cb0', false)}>
                 {pantauId === u.id ? 'Tutup Pantauan' : 'Pantau'}
               </button>
+              <button onClick={() => setPesertaId(pesertaId === u.id ? null : u.id)} style={tombol('#805ad5', false)}>
+                {pesertaId === u.id ? 'Tutup Peserta' : 'Peserta'}
+              </button>
               {u.status !== 'aktif' && (
                 <button onClick={() => aktifkan(u)} disabled={sibuk || adaAktif} style={tombol('#38a169', sibuk || adaAktif)}>
                   {u.status === 'selesai' ? 'Aktifkan Lagi' : 'Aktifkan'}
@@ -228,6 +233,9 @@ export default function MenuUjian({ sandi, onKeluar }) {
               )}
             </div>
           </div>
+          {pesertaId === u.id && (
+            <PesertaUjian ujianId={u.id} sandi={sandi} onKeluar={onKeluar} />
+          )}
           {pantauId === u.id && (
             <PantauUjian ujianId={u.id} sandi={sandi} onKeluar={onKeluar} />
           )}
