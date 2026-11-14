@@ -98,6 +98,11 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
     kirim({ aksi: 'reset_login', nomor_ujian: s.nomor_ujian }, `Login ${s.nama_lengkap} sudah direset.`);
   };
 
+  const hapusTanda = (s) => {
+    if (!confirm(`Hapus catatan pelanggaran dan tanda kecurangan untuk ${s.nama_lengkap} (${s.nomor_ujian})?\nJika siswa ini terkunci, tekan juga Reset Login agar bisa masuk lagi.`)) return;
+    kirim({ aksi: 'hapus_tanda', sesi_id: s.sesi_id }, `Tanda kecurangan ${s.nama_lengkap} dihapus.`);
+  };
+
   const tambahWaktu = (s) => {
     const jawab = prompt(`Tambah waktu untuk ${s.nama_lengkap} (menit, 1 sampai 180):`, '10');
     if (jawab === null) return;
@@ -288,6 +293,7 @@ export default function PantauUjian({ ujianId, sandi, onKeluar }) {
                         {s.curang ? '⚠ Terdeteksi' : ''} {s.jumlah_pelanggaran}x
                       </span>
                     ) : '-'}
+                    {s.jumlah_pelanggaran > 0 && s.sesi_id && <div style={{ marginTop: '4px' }}><button onClick={() => hapusTanda(s)} disabled={sibuk} style={mini('#718096', sibuk)}>Hapus tanda</button></div>}
                     {s.terkunci && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#c53030', marginTop: '2px' }}>🔒 Terkunci otomatis — klik Reset Login agar bisa masuk lagi</div>}
                     {s.curang && s.alasan_curang && <div style={{ fontSize: '11px', color: '#9b2c2c', marginTop: '2px', maxWidth: '220px' }}>{s.alasan_curang}</div>}
                   </td>
