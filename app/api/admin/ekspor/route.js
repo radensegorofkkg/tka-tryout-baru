@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cekAdmin } from '../../../../lib/adminAuth';
 import { susunHasil, rekapSekolah, waktuWib } from '../../../../lib/ekspor';
+import { daftarPeserta, npsnDariNomor } from '../../../../lib/peserta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,9 @@ export async function GET(request) {
     const jumlahSoal = bs.length;
     const maks = bs.reduce((a, b) => a + (Number(b.soal?.skor) || 0), 0);
 
-    const siswa = await ambilSemua(() => db.from('students').select('nomor_ujian, nama_lengkap').order('nomor_ujian'));
+    const pesertaSekolah = await daftarPeserta(db, ujianId); // null = semua sekolah
+    const semuaSiswa = await ambilSemua(() => db.from('students').select('nomor_ujian, nama_lengkap').order('nomor_ujian'));
+    const siswa = pesertaSekolah ? semuaSiswa.filter((s) => pesertaSekolah.has(npsnDariNomor(s.nomor_ujian))) : semuaSiswa;
     const sesi = await ambilSemua(() =>
       db.from('sesi_ujian').select('id, nomor_ujian, mulai_at, selesai_at, skor, pelanggaran, curang, alasan_curang').eq('ujian_id', ujianId).order('id')
     );
