@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { bolehIkut, PESAN_TIDAK_TERDAFTAR } from '../../../../lib/peserta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -51,6 +52,17 @@ export async function POST(request) {
   if (!siswa || rapikan(siswa.nama_lengkap) !== nama) {
     await jeda(600); // memperlambat tebak-tebakan
     return NextResponse.json({ pesan: 'Nomor ujian atau nama lengkap tidak cocok.' }, { status: 401 });
+  }
+
+  // Bila ada ujian aktif yang dibatasi untuk sekolah tertentu, siswa dari sekolah lain ditolak sebelum login terpakai.
+  try {
+    const { data: aktif, error: ea } = await db.from('ujian').select('id').eq('status', 'aktif').maybeSingle();
+    if (ea) throw new Error(ea.message);
+    if (aktif && !(await bolehIkut(db, aktif.id, siswa.nomor_ujian))) {
+      return NextResponse.json({ pesan: PESAN_TIDAK_TERDAFTAR }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json({ pesan: 'Gagal memeriksa data peserta.' }, { status: 500 });
   }
 
   const SUDAH_LOGIN = {
