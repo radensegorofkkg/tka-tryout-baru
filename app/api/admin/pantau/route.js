@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cekAdmin } from '../../../../lib/adminAuth';
+import { daftarPeserta, npsnDariNomor } from '../../../../lib/peserta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,9 +57,11 @@ export async function GET(request) {
     const jumlahSoal = bs.length;
     const maks = bs.reduce((a, b) => a + (Number(b.soal?.skor) || 0), 0);
 
-    const siswa = await ambilSemua(() =>
+    const pesertaSekolah = await daftarPeserta(db, ujianId); // null = semua sekolah
+    const semuaSiswa = await ambilSemua(() =>
       db.from('students').select('nomor_ujian, nama_lengkap, is_logged_in, sesi_token').order('nomor_ujian')
     );
+    const siswa = pesertaSekolah ? semuaSiswa.filter((s) => pesertaSekolah.has(npsnDariNomor(s.nomor_ujian))) : semuaSiswa;
     const { data: dataSekolah } = await db.from('sekolah').select('npsn, nama');
     const namaSekolah = new Map((dataSekolah || []).map((x) => [x.npsn, x.nama]));
     const sesi = await ambilSemua(() =>
@@ -104,7 +107,7 @@ export async function GET(request) {
 
     const hitung = (st) => daftar.filter((d) => d.status === st).length;
     return NextResponse.json({
-      ujian: { ...u, jumlah_soal: jumlahSoal, maks },
+      ujian: { ...u, jumlah_soal: jumlahSoal, maks, peserta_terbatas: !!pesertaSekolah },
       ringkas: {
         total: daftar.length,
         belum_login: hitung('belum_login'),
