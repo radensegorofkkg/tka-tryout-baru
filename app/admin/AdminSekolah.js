@@ -169,16 +169,18 @@ export default function AdminSekolah({ sandi, onKeluar }) {
             <tr style={{ backgroundColor: '#edf2f7', textAlign: 'left' }}>
               <th style={sel}>Waktu (WIB)</th>
               <th style={sel}>Oleh</th>
+              <th style={sel}>Aksi</th>
               <th style={sel}>No Ujian</th>
               <th style={sel}>Siswa</th>
             </tr>
           </thead>
           <tbody>
-            {data.log.length === 0 && <tr><td colSpan="4" style={{ ...sel, color: '#718096', textAlign: 'center' }}>Belum ada reset.</td></tr>}
+            {data.log.length === 0 && <tr><td colSpan="5" style={{ ...sel, color: '#718096', textAlign: 'center' }}>Belum ada reset.</td></tr>}
             {data.log.map((l, i) => (
               <tr key={i}>
                 <td style={sel}>{waktuWib(l.waktu)}</td>
                 <td style={sel}>{l.oleh}</td>
+                <td style={sel}>{l.aksi}</td>
                 <td style={sel}>{l.nomor_ujian}</td>
                 <td style={sel}>{l.nama}</td>
               </tr>
