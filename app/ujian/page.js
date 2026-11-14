@@ -21,7 +21,8 @@ function statusJawab(soal, j) {
   return jumlah >= total ? 'penuh' : 'sebagian';
 }
 
-const BATAS = 3; // sama dengan BATAS_PELANGGARAN di server (lib/pelanggaran.js)
+const MIN_KUMPUL = 0.8; // soal yang harus terjawab sebelum tombol Kumpulkan aktif
+const adalahHp = () => typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const lapisan = (z) => ({
   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: z, backgroundColor: 'rgba(26,32,44,0.95)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto',
@@ -64,6 +65,8 @@ export default function HalamanUjian() {
   const [penuh, setPenuh] = useState(true); // sedang dalam layar penuh?
   const [layarPenuhGagal, setLayarPenuhGagal] = useState(false);
   const terkunciRef = useRef(false);
+  const [batas, setBatas] = useState(3); // diperbarui dari server (3 di laptop/PC, 5 di HP)
+  const wakeLock = useRef(null);
 
   /* ---------- komunikasi dengan server ---------- */
   const api = async (metode, alamat, body) => {
@@ -209,6 +212,7 @@ export default function HalamanUjian() {
   };
 
   const kumpul = async () => {
+    if (soal.filter((x) => statusJawab(x, jawaban[x.id]) !== 'kosong').length < Math.ceil(soal.length * MIN_KUMPUL)) return;
     const kosong = soal.filter((s) => statusJawab(s, jawaban[s.id]) !== 'penuh').length;
     const tanya = kosong > 0
       ? `Masih ada ${kosong} soal yang belum dijawab sepenuhnya. Yakin ingin mengumpulkan? Setelah dikumpulkan, jawaban tidak bisa diubah.`
@@ -279,6 +283,7 @@ export default function HalamanUjian() {
         const { res, json } = hasil;
         if (res.status >= 500) return; // sementara: dicoba lagi
         antreanLapor.current.shift(); // berhasil, atau ditolak permanen (401/400): jangan diulang
+        if (res.ok && typeof json.batas === 'number') setBatas(json.batas);
         if (res.ok && json.terkunci) { kunciUjian(); return; }
         if (res.ok && typeof json.jumlah === 'number') {
           jumlahLokal.current = Math.max(jumlahLokal.current, json.jumlah);
@@ -309,6 +314,7 @@ export default function HalamanUjian() {
     if (!n || !m || !t) { router.push('/'); return; }
     setNama(n);
     setNomor(m);
+    setBatas(adalahHp() ? 5 : 3);
     muatStatus();
   }, []);
 
@@ -399,6 +405,7 @@ export default function HalamanUjian() {
     let sudahLapor = false;
     const t = setInterval(() => {
       const wajib = bisaLayarPenuh() && !layarPenuhGagal;
+      if (document.hidden) { sejak = null; return; } // layar mati / pindah tab: dihitung di deteksi keluar halaman
       if (!wajib || elemenPenuh()) { sejak = null; sudahLapor = false; return; }
       if (sejak === null) sejak = Date.now();
       const lama = (Date.now() - sejak) / 1000;
@@ -414,6 +421,31 @@ export default function HalamanUjian() {
       document.removeEventListener('webkitfullscreenchange', perbarui);
     };
   }, [fase, layarPenuhGagal]);
+
+  // Menahan layar tetap menyala selama ujian (Screen Wake Lock). Tidak semua HP mendukung atau mengizinkan,
+  // misalnya saat mode hemat baterai; kalau gagal, ujian tetap berjalan seperti biasa.
+  useEffect(() => {
+    if (fase !== 'ujian') return;
+    let batal = false;
+    const minta = async () => {
+      try {
+        if (batal || !('wakeLock' in navigator) || document.hidden || wakeLock.current) return;
+        const kunci = await navigator.wakeLock.request('screen');
+        if (batal) { kunci.release().catch(() => {}); return; }
+        wakeLock.current = kunci;
+        kunci.addEventListener('release', () => { if (wakeLock.current === kunci) wakeLock.current = null; });
+      } catch { /* tidak didukung atau ditolak */ }
+    };
+    minta();
+    const saatTampil = () => { if (!document.hidden) minta(); };
+    document.addEventListener('visibilitychange', saatTampil);
+    return () => {
+      batal = true;
+      document.removeEventListener('visibilitychange', saatTampil);
+      try { if (wakeLock.current) wakeLock.current.release().catch(() => {}); } catch { /* abaikan */ }
+      wakeLock.current = null;
+    };
+  }, [fase]);
 
   // Menghalangi salin, tempel, klik kanan, dan seret selama ujian.
   useEffect(() => {
@@ -435,7 +467,7 @@ export default function HalamanUjian() {
         <div style={{ fontSize: '48px' }}>🔒</div>
         <h2 style={{ color: '#c53030' }}>Ujian Terkunci</h2>
         <p style={{ lineHeight: 1.6 }}>
-          Anda terdeteksi melakukan pelanggaran sebanyak {BATAS} kali (atau tidak dalam layar penuh lebih dari 1 menit).
+          Anda terdeteksi melakukan pelanggaran sebanyak {batas} kali (atau tidak dalam layar penuh lebih dari 1 menit).
           Ujian dikunci otomatis dan dilaporkan ke pengawas.
         </p>
         <p style={{ lineHeight: 1.6, color: '#4a5568' }}>
@@ -497,6 +529,9 @@ export default function HalamanUjian() {
   const s = soal[idx];
   const j = jawaban[s.id];
   const mendesak = sisa <= 300;
+  const terjawab = soal.filter((x) => statusJawab(x, jawaban[x.id]) !== 'kosong').length;
+  const minimal = Math.ceil(soal.length * MIN_KUMPUL);
+  const cukup = terjawab >= minimal;
 
   const pilihPG = (k) => simpan(s.id, k);
   const pilihPK = (k) => {
@@ -557,11 +592,11 @@ export default function HalamanUjian() {
                   : 'Anda terdeteksi keluar dari halaman ujian.'}
               {' '}Kejadian ini tercatat dan dapat dilihat pengawas.
             </p>
-            <p style={{ fontWeight: 'bold' }}>Pelanggaran tercatat: {peringatan.jumlah} dari batas {BATAS}</p>
-            <p style={{ lineHeight: 1.6, color: peringatan.curang || peringatan.jumlah >= BATAS ? '#c53030' : '#4a5568', fontSize: '14px' }}>
-              {peringatan.curang || peringatan.jumlah >= BATAS
+            <p style={{ fontWeight: 'bold' }}>Pelanggaran tercatat: {peringatan.jumlah} dari batas {batas}</p>
+            <p style={{ lineHeight: 1.6, color: peringatan.curang || peringatan.jumlah >= batas ? '#c53030' : '#4a5568', fontSize: '14px' }}>
+              {peringatan.curang || peringatan.jumlah >= batas
                 ? 'Ujian Anda sudah ditandai "terdeteksi kecurangan" dan dilaporkan ke pengawas.'
-                : `Jika mencapai ${BATAS} kali, ujian Anda ditandai "terdeteksi kecurangan".`}
+                : `Jika mencapai ${batas} kali, ujian Anda ditandai "terdeteksi kecurangan".`}
             </p>
             <button onClick={() => setPeringatan(null)} style={tombol('#3182ce')}>Saya mengerti, lanjutkan ujian</button>
           </div>
@@ -661,8 +696,13 @@ export default function HalamanUjian() {
         <button onClick={() => setIdx(idx - 1)} disabled={idx === 0} style={tombol('#4a5568', idx === 0)}>Sebelumnya</button>
         {idx < soal.length - 1
           ? <button onClick={() => setIdx(idx + 1)} style={tombol('#3182ce')}>Selanjutnya</button>
-          : <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>{sibuk ? 'Mengumpulkan…' : 'Selesai & Kumpulkan'}</button>}
+          : <button onClick={kumpul} disabled={sibuk || !cukup} style={tombol('#38a169', sibuk || !cukup)}>{sibuk ? 'Mengumpulkan…' : 'Selesai & Kumpulkan'}</button>}
       </div>
+      {!cukup && (
+        <div style={{ marginTop: '8px', textAlign: 'right', fontSize: '13px', color: '#c05621' }}>
+          Tombol kumpul aktif setelah minimal {minimal} dari {soal.length} soal terjawab (sudah {terjawab}).
+        </div>
+      )}
 
       <div style={{ marginTop: '22px' }}>
         <div style={{ fontSize: '13px', color: '#718096', marginBottom: '8px' }}>
@@ -675,7 +715,7 @@ export default function HalamanUjian() {
         </div>
         {idx < soal.length - 1 && (
           <div style={{ marginTop: '16px', textAlign: 'right' }}>
-            <button onClick={kumpul} disabled={sibuk} style={tombol('#38a169', sibuk)}>Kumpulkan Ujian</button>
+            <button onClick={kumpul} disabled={sibuk || !cukup} style={tombol('#38a169', sibuk || !cukup)}>Kumpulkan Ujian</button>
           </div>
         )}
       </div>
