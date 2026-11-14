@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { buatDb } from '../../../../lib/siswaAuth';
 import { npsnDariRequest } from '../../../../lib/sekolahAuth';
+import { bolehIkut } from '../../../../lib/peserta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,6 +68,8 @@ export async function GET(request) {
       }
     }
 
+    const ikut = u ? await bolehIkut(db, u.id, `${npsn}-000`) : true;
+
     const daftar = siswa.map((s) => {
       const se = petaSesi.get(s.nomor_ujian);
       let status = s.is_logged_in ? 'login' : 'belum_login';
@@ -96,6 +99,7 @@ export async function GET(request) {
     return NextResponse.json({
       sekolah: sk,
       ujian: u ? { id: u.id, nama: u.nama, durasi_menit: u.durasi_menit } : null,
+      ikut,
       ringkas: {
         total: daftar.length,
         belum_login: hitung('belum_login'),
