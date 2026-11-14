@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buatDb, cekSiswa } from '../../../../lib/siswaAuth';
+import { bolehIkut, PESAN_TIDAK_TERDAFTAR } from '../../../../lib/peserta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,7 +66,9 @@ export async function GET(request) {
     if (!siswa) return salah(TIDAK_VALID, 401);
     if (!u) return NextResponse.json({ siswa, ujian: null });
 
-    const sesi = await ambilSesi(db, u.id, siswa.nomor_ujian);
+    const [sesi, boleh] = await Promise.all([ambilSesi(db, u.id, siswa.nomor_ujian), bolehIkut(db, u.id, siswa.nomor_ujian)]);
+    // Siswa yang sudah punya sesi tidak dikeluarkan di tengah jalan; siswa baru dari sekolah lain ditolak.
+    if (!sesi && !boleh) return NextResponse.json({ pesan: PESAN_TIDAK_TERDAFTAR, tidak_terdaftar: true }, { status: 403 });
     let status = 'belum_mulai';
     let sisa = null;
     if (sesi) {
@@ -95,7 +98,8 @@ export async function POST(request) {
     if (!siswa) return salah(TIDAK_VALID, 401);
     if (!u) return salah('Ujian belum dibuka oleh admin. Tunggu arahan pengawas.', 409);
 
-    const sudah = await ambilSesi(db, u.id, siswa.nomor_ujian);
+    const [sudah, boleh] = await Promise.all([ambilSesi(db, u.id, siswa.nomor_ujian), bolehIkut(db, u.id, siswa.nomor_ujian)]);
+    if (!sudah && !boleh) return NextResponse.json({ pesan: PESAN_TIDAK_TERDAFTAR, tidak_terdaftar: true }, { status: 403 });
     if (sudah) {
       if (sudah.selesai_at) {
         return salah('Anda sudah mengumpulkan ujian ini. Hubungi pengawas jika perlu dibuka kembali.', 403);
