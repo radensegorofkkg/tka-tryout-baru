@@ -158,6 +158,7 @@ export default function HalamanUjian() {
     try {
       const { res, json } = await api('POST', '/api/siswa/ujian');
       if (res.status === 401) { keluarLogin(); return; }
+      if (res.status === 403 && json.tidak_terdaftar) { setPesan(json.pesan); setFase('galat'); return; }
       if (res.status === 403) { tutup(json.pesan || ''); return; }
       if (!res.ok) { alert(json.pesan || 'Gagal memulai ujian.'); return; }
       await muatSoal();
@@ -318,11 +319,20 @@ export default function HalamanUjian() {
     muatStatus();
   }, []);
 
-  // Ruang tunggu: cek tiap 5 detik apakah ujian sudah dibuka admin.
+  // Ruang tunggu: cek tiap 15–20 detik apakah ujian sudah dibuka admin.
   useEffect(() => {
     if (fase !== 'menunggu') return;
-    const t = setInterval(muatStatus, 5000);
-    return () => clearInterval(t);
+    let batal = false;
+    let t;
+    const jalan = () => {
+      // Jeda 15–20 detik (acak) supaya ribuan HP tidak bertanya ke server di detik yang sama.
+      t = setTimeout(async () => {
+        await muatStatus();
+        if (!batal) jalan();
+      }, 15000 + Math.random() * 5000);
+    };
+    jalan();
+    return () => { batal = true; clearTimeout(t); };
   }, [fase]);
 
   // Hitung mundur dari jam server; otomatis dikumpulkan saat habis.
