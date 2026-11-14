@@ -184,6 +184,22 @@ async function bukaUlang(db, b) {
   });
 }
 
+// Menghapus catatan pelanggaran dan tanda kecurangan satu sesi (bila pengawas yakin itu salah deteksi).
+// Siswa yang terlanjur terkunci tetap harus direset loginnya.
+async function hapusTanda(db, b) {
+  const sesiId = Number(b.sesi_id);
+  if (!Number.isInteger(sesiId)) return salah('Permintaan tidak valid.');
+  const { data, error } = await db
+    .from('sesi_ujian')
+    .update({ pelanggaran: [], curang: false, alasan_curang: null })
+    .eq('id', sesiId)
+    .select('nomor_ujian');
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) return salah('Sesi tidak ditemukan.', 404);
+  await db.from('log_reset').insert({ oleh: 'super', nomor_ujian: data[0].nomor_ujian, aksi: 'hapus_tanda' }); // catatan
+  return NextResponse.json({ ok: true });
+}
+
 async function tambahWaktu(db, b) {
   const sesiId = Number(b.sesi_id);
   const menit = Number(b.menit);
@@ -220,6 +236,7 @@ export async function POST(request) {
       case 'reset_login': return await resetLogin(db, body);
       case 'buka_ulang': return await bukaUlang(db, body);
       case 'tambah_waktu': return await tambahWaktu(db, body);
+      case 'hapus_tanda': return await hapusTanda(db, body);
       default: return salah('Aksi tidak dikenal.');
     }
   } catch (e) {
