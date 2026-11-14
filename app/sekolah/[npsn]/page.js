@@ -185,6 +185,11 @@ export default function AdminSekolah() {
           </div>
         </div>
 
+        {data.ujian && data.ikut === false && (
+          <div style={{ backgroundColor: '#fffaf0', border: '1px solid #ed8936', color: '#7b341e', borderRadius: '8px', padding: '10px 14px', fontSize: '14px', marginBottom: '10px' }}>
+            Sekolah Anda tidak ikut ujian yang sedang aktif ini.
+          </div>
+        )}
         {galat && <div style={{ color: '#c53030', fontSize: '14px', marginBottom: '8px' }}>{galat}</div>}
         {info && <div style={{ color: '#276749', fontSize: '14px', marginBottom: '8px' }}>{info}</div>}
 
