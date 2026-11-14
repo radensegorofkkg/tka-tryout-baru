@@ -48,6 +48,7 @@ export async function GET(request) {
         waktu: l.waktu,
         oleh: l.oleh === 'super' ? 'Super admin' : peta.get(l.oleh) || l.oleh,
         nomor_ujian: l.nomor_ujian,
+        aksi: l.aksi === 'hapus_tanda' ? 'Hapus tanda kecurangan' : 'Reset login',
         nama: nama.get(l.nomor_ujian) || '',
       })),
     });
