@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { buatDb, cekSiswa } from '../../../../lib/siswaAuth';
-import { JENIS_SAH, BATAS_PELANGGARAN, nilaiPelanggaran, tambahCatatan } from '../../../../lib/pelanggaran';
+import { JENIS_SAH, batasUntuk, perangkatHp, nilaiPelanggaran, tambahCatatan } from '../../../../lib/pelanggaran';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,8 @@ export async function POST(request) {
     if (!sesi || sesi.selesai_at) return NextResponse.json({ ok: true, diabaikan: true });
 
     const log = tambahCatatan(sesi.pelanggaran, body.jenis, body.detik);
-    const hasil = nilaiPelanggaran(log);
+    const hp = perangkatHp(request.headers.get('user-agent'));
+    const hasil = nilaiPelanggaran(log, { hp });
     const { error: ee } = await db
       .from('sesi_ujian')
       .update({ pelanggaran: log, curang: hasil.curang, alasan_curang: hasil.alasan })
@@ -61,7 +62,7 @@ export async function POST(request) {
       terkunci = true;
     }
 
-    return NextResponse.json({ ok: true, jumlah: hasil.jumlah, curang: hasil.curang, batas: BATAS_PELANGGARAN, terkunci });
+    return NextResponse.json({ ok: true, jumlah: hasil.jumlah, curang: hasil.curang, batas: batasUntuk(hp), terkunci });
   } catch (e) {
     return salah('Kejadian belum tercatat.', 500);
   }
